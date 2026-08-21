@@ -43,6 +43,13 @@ user_memories.json
 *.log
 tmp/
 
+# Character Development Files (not needed for forks)
+rag_data/raw_subtitles/
+rag_data/delulu_character_bible.md
+rag_data/delulu_lore.md
+rag_data/delulu_companion_playbook.md
+rag_data/conversation_patterns.md
+
 # OS and Editors
 .DS_Store
 Thumbs.db
