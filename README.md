@@ -294,7 +294,7 @@ python -m delulu_bot
 
 2. **Create Web Service**
    - New → Web Service
-   - Connect your GitHub/GitLab repo
+   - Connect your GitHub repo
    - Settings:
      - **Name:** your-bot-name
      - **Environment:** Python
@@ -405,7 +405,6 @@ See [LICENSE](LICENSE) file.
 ## Mirrors
 
 - **GitHub:** https://github.com/amg555/delulubot
-- **GitLab:** https://gitlab.com/anniva-group/delulubot
 
 ---
 
