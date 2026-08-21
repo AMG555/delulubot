@@ -15,6 +15,7 @@
   <a href="#-features">Features</a> •
   <a href="#-commands">Commands</a> •
   <a href="#-user-customization">Customization</a> •
+  <a href="#-create-your-own-character">Create Your Character</a> •
   <a href="#-tech-stack">Tech Stack</a> •
   <a href="#-installation">Installation</a> •
   <a href="#-configuration">Configuration</a> •
@@ -95,7 +96,76 @@ Each user has persistent preferences stored in `user_memories.json`:
 
 **Emoji Level** — `none`, `default` (0-1 per message), or `high` (1-3 per message).
 
+## Create Your Own Character
+
+Want to fork this bot with your own personality? Here's how:
+
+### 1. Create Character Files in `rag_data/`
+
+**Character Bible** (`rag_data/your_character_bible.md`)
+```markdown
+# Your Character Name
+Age: X | Gender: Y | Personality: Z
+
+## Core Traits
+- Trait 1: Description
+- Trait 2: Description
+
+## Speech Patterns
+- How they talk (formal, casual, slang)
+- Signature phrases
+- Language mix (if any)
+
+## Background
+Brief backstory that shapes their worldview
+```
+
+**Lore Document** (`rag_data/your_lore.md`)
+- Backstory details
+- Relationships
+- World-building elements
+
+**Conversation Patterns** (`rag_data/conversation_patterns.md`)
+- Example dialogues showing character voice
+- How they handle different emotions
+
+### 2. Update Configuration
+
+Edit `.env`:
+```env
+CHARACTER_BIBLE_FILE=rag_data/your_character_bible.md
+RAG_DIR=rag_data
+RAG_ENABLED=true
+```
+
+### 3. Customize System Prompt
+
+Edit `delulu_bot/prompts.py` → `build_system_instruction()` function to match your character's core personality.
+
+### 4. Test Your Character
+
+```bash
+python delulu_bot.py
+```
+
+Use these commands to test:
+- `/ask <question>` — Test responses
+- `/ragsearch <topic>` — Verify RAG retrieval
+- `/ragstatus` — Check if files loaded
+- `/mood` — Test emotional handling
+
+### Tips for Great Characters
+
+✅ **Be specific** — "talks like a pirate" is better than "friendly"  
+✅ **Show, don't tell** — Include example conversations  
+✅ **Define boundaries** — What topics they avoid, how formal/casual  
+✅ **Add quirks** — Unique phrases, emoji usage, humor style  
+✅ **Test edge cases** — How they handle sadness, anger, excitement  
+
+See `rag_data/README.md` for detailed file structure examples.
+
 ## Tech Stack
+
 
 - **Core:** Python 3.9+
 - **Primary Chat:** Groq (openai/gpt-oss-120b) via OpenAI SDK
