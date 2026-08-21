@@ -98,7 +98,7 @@ Each user has persistent preferences stored in `user_memories.json`:
 ## Tech Stack
 
 - **Core:** Python 3.9+
-- **Primary Chat:** Groq (llama-3.3-70b-versatile) via OpenAI SDK
+- **Primary Chat:** Groq (openai/gpt-oss-120b) via OpenAI SDK
 - **Embeddings:** Jina AI (jina-embeddings-v3) with key rotation
 - **Fallback Chat:** Google Gemini (gemini-2.0-flash-lite)
 - **Bot Framework:** python-telegram-bot v20+
@@ -145,7 +145,7 @@ Key environment variables in `.env`:
 ```env
 TELEGRAM_TOKEN=your_token_here
 GROQ_API_KEY=your_groq_key
-GROQ_MODEL=llama-3.3-70b-versatile
+GROQ_MODEL=openai/gpt-oss-120b
 GEMINI_API_KEY=your_gemini_key
 GEMINI_MODEL=gemini-2.0-flash-lite
 JINA_API_KEYS=key1,key2,key3

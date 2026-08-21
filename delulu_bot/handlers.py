@@ -20,6 +20,7 @@ from .api_clients import (
     GEMINI_MODEL,
     GEMINI_FALLBACK_MODELS,
     GROQ_MODEL,
+    GROQ_FALLBACK_MODELS,
     check_gemini_api,
     gemini_runtime,
     get_gemini_model_order,
@@ -182,6 +183,7 @@ async def _groq_generate_with_guard(
     messages_openai: list[dict[str, str]],
     user_name: str,
     user_message: str,
+    model: str = GROQ_MODEL,
 ) -> str:
     working = [{"role": "system", "content": system_instruction}, *messages_openai]
     attempts = max(0, CHARACTER_GUARD_RETRIES) + 1 if CHARACTER_GUARD_ENABLED else 1
@@ -190,7 +192,7 @@ async def _groq_generate_with_guard(
         response = await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: groq_client.chat.completions.create(
-                model=GROQ_MODEL,
+                model=model,
                 messages=working,
                 temperature=TEMPERATURE,
                 max_tokens=MAX_TOKENS,
@@ -307,21 +309,27 @@ async def get_delulu_response(user_id: str, user_message: str) -> str:
     openai_messages.append({"role": "user", "content": user_message})
 
     if groq_client:
-        try:
-            reply = await asyncio.wait_for(
-                _groq_generate_with_guard(
-                    system_instruction=dynamic_instruction,
-                    messages_openai=openai_messages,
-                    user_name=user_name,
-                    user_message=user_message,
-                ),
-                timeout=TIMEOUT_SECONDS,
-            )
-            reply = de_robotify_reply(reply, user_message)
-            update_memory(user_id, user_message, reply)
-            return reply
-        except Exception as e:
-            logger.warning(f"Groq failed, falling back to Gemini: {e}")
+        models_to_try = [GROQ_MODEL] + GROQ_FALLBACK_MODELS
+        for model_name in models_to_try:
+            try:
+                reply = await asyncio.wait_for(
+                    _groq_generate_with_guard(
+                        system_instruction=dynamic_instruction,
+                        messages_openai=openai_messages,
+                        user_name=user_name,
+                        user_message=user_message,
+                        model=model_name,
+                    ),
+                    timeout=TIMEOUT_SECONDS,
+                )
+                reply = de_robotify_reply(reply, user_message)
+                update_memory(user_id, user_message, reply)
+                return reply
+            except Exception as e:
+                if model_name == models_to_try[-1]:
+                    logger.warning(f"All Groq models failed, falling back to Gemini: {e}")
+                else:
+                    logger.warning(f"Groq model {model_name} failed, trying next fallback: {e}")
 
     if GEMINI_API_KEY:
         contents = []
