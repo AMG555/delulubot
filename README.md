@@ -182,9 +182,19 @@ See `rag_data/README.md` for detailed file structure examples.
 ### Prerequisites
 - Python 3.9+
 - Telegram bot token from [@BotFather](https://t.me/botfather)
+  1. Message @BotFather on Telegram
+  2. Send `/newbot` and follow prompts
+  3. Copy the bot token
 - Groq API key from [Groq Console](https://console.groq.com)
-- Jina API key(s) from [Jina AI](https://jina.ai/) — 1+ keys
+  - Free tier, no credit card required
+  - Sign up → Dashboard → Create API Key
+- Jina API key(s) from [Jina AI](https://jina.ai/)
+  - Free tier: 1M tokens/month per key
+  - Sign up → Get API Key
+  - You can add multiple keys (comma-separated) for rotation
 - (Optional) Google AI Studio API key for Gemini fallback
+  - Get from [Google AI Studio](https://aistudio.google.com/apikey)
+  - Free tier available
 
 ### Setup
 
@@ -229,9 +239,82 @@ TIMEOUT_SECONDS=60
 
 Full reference in `.env.example`.
 
+### Voice Configuration (Optional)
+
+```env
+# Voice Input (transcription)
+VOICE_INPUT_ENABLED=true
+VOICE_MAX_DURATION_SECONDS=120
+
+# Voice Output (TTS)
+VOICE_OUTPUT_ENABLED=true
+VOICE_TTS_ENGINE=auto  # auto, edge-tts, gtts
+EDGE_TTS_DEFAULT_VOICE=en-IN-NeerjaNeural
+EDGE_TTS_SWEET_VOICE=en-US-AriaNeural
+VOICE_REPLY_WITH_TEXT=true  # Send both text and voice
+AUTO_VOICE_ON_SONG_REQUEST=true
+```
+
+### Advanced Configuration
+
+```env
+# RAG Settings
+RAG_TOP_K=3  # Number of relevant snippets to retrieve
+RAG_CHUNK_WORDS=120  # Words per chunk
+RAG_MIN_SCORE=1.5  # Minimum relevance score
+
+# Character Guard
+CHARACTER_GUARD_ENABLED=true  # Auto-rewrite off-character responses
+CHARACTER_GUARD_RETRIES=0  # Number of retry attempts
+
+# Memory
+PERSONAL_FACTS_LIMIT=40  # Max facts stored per user
+PERSONAL_FACTS_TOP_K=4  # Facts to include in context
+
+# Timeouts
+TIMEOUT_SECONDS=60  # API timeout
+COMPANION_ALWAYS_ON=true  # Emotional companion mode
+```
+
 ## Deployment
 
+### Local Development
+
+```bash
+# Run locally
+python delulu_bot.py
+
+# Or run as module
+python -m delulu_bot
+```
+
 ### Render (Free Tier)
+
+1. **Create Render Account** at [render.com](https://render.com)
+
+2. **Create Web Service**
+   - New → Web Service
+   - Connect your GitHub/GitLab repo
+   - Settings:
+     - **Name:** your-bot-name
+     - **Environment:** Python
+     - **Build Command:** `pip install -r requirements.txt`
+     - **Start Command:** `python delulu_bot.py`
+
+3. **Add Environment Variables**
+   - Go to Environment tab
+   - Add all variables from `.env.example`:
+     - `TELEGRAM_TOKEN`
+     - `GROQ_API_KEY`
+     - `JINA_API_KEYS`
+     - `GEMINI_API_KEY` (optional)
+     - All other config variables
+
+4. **Deploy**
+   - Render auto-deploys on git push
+   - Free tier: 512MB RAM, spins down after 15min idle
+
+### Keep Bot Alive (Render Free Tier)
 
 This bot runs on Render's free plan. Key details:
 
@@ -240,23 +323,84 @@ This bot runs on Render's free plan. Key details:
 - **Keep Alive:** UptimeRobot pings every 5 minutes to prevent the 15-minute idle sleep.
 - **Memory:** 512 MB RAM — `faster-whisper` is excluded to save ~250 MB.
 
-### UptimeRobot
+### UptimeRobot Setup
 
-Monitor at `https://delulubot-6b5v.onrender.com/` with HEAD requests every 5 minutes.
+1. Sign up at [uptimerobot.com](https://uptimerobot.com) (free)
+2. Add New Monitor:
+   - **Monitor Type:** HTTP(s)
+   - **URL:** `https://your-bot-name.onrender.com/`
+   - **Monitoring Interval:** 5 minutes
+   - **Monitor Timeout:** 30 seconds
+3. Save — bot will stay awake 24/7
 
 ## Project Structure
 
 ```
 delulubot/
-├── rag_data/                  # Knowledge base & character bible
-├── .env                       # Environment variables (gitignored)
-├── .env.example               # Configuration template
-├── delulu_bot.py              # Main application (~3700 lines)
-├── requirements.txt           # Python dependencies
-├── user_memories.json         # Per-user persistent data
-├── rag_embeddings_cache.json  # Cached Jina embeddings
-└── README.md                  # This file
+├── delulu_bot/                # Main bot package
+│   ├── __main__.py           # Entry point
+│   ├── main.py               # Bot initialization
+│   ├── handlers.py           # Command & message handlers
+│   ├── api_clients.py        # Groq, Gemini, Jina clients
+│   ├── config.py             # Configuration loader
+│   ├── prompts.py            # System prompts
+│   ├── memory.py             # User memory system
+│   ├── context.py            # Context builders
+│   ├── rag.py                # RAG implementation
+│   ├── voice.py              # Voice I/O handling
+│   └── webhook_server.py     # Health check server
+├── rag_data/                 # Knowledge base
+│   ├── README.md             # Character creation guide
+│   └── (your character files here)
+├── .env                      # Your secrets (gitignored)
+├── .env.example              # Config template
+├── requirements.txt          # Dependencies
+├── user_memories.json        # Per-user data (gitignored)
+├── rag_embeddings_cache.json # RAG cache (gitignored)
+└── README.md                 # This file
 ```
+
+## Troubleshooting
+
+### Bot not responding
+- Check `/status` command
+- Verify API keys in `.env`
+- Check logs for errors
+- Test with `/ping` (no AI needed)
+
+### Voice not working
+- Ensure `VOICE_INPUT_ENABLED=true` and `VOICE_OUTPUT_ENABLED=true`
+- Check `edge-tts` is installed: `pip install edge-tts`
+- Test with audio message
+
+### RAG not retrieving
+- Run `/ragstatus` to check loaded files
+- Run `/ragreload` to refresh
+- Verify files in `rag_data/`
+- Check `JINA_API_KEYS` is set
+
+### Character off-brand
+- Enable character guard: `CHARACTER_GUARD_ENABLED=true`
+- Check `CHARACTER_BIBLE_FILE` path
+- Add more example dialogues in character files
+- Review `delulu_bot/prompts.py`
+
+### Out of memory (Render)
+- Free tier has 512MB RAM
+- Bot optimized for this (no faster-whisper)
+- Check for memory leaks in logs
+
+## Contributing
+
+Contributions welcome! Feel free to:
+- Report bugs via Issues
+- Submit pull requests
+- Share your custom characters
+- Suggest features
+
+## License
+
+See [LICENSE](LICENSE) file.
 
 ## Mirrors
 
