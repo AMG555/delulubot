@@ -49,3 +49,7 @@ Thumbs.db
 .vscode/
 .idea/
 .gemini/
+
+# Kiro/Agent Skills
+skills/
+.kiro/
