@@ -35,12 +35,15 @@ Built on a **multi-provider free-tier architecture**: Groq for primary chat, Jin
 
 | Feature | Description |
 | :--- | :--- |
+| **Multimodal Vision (Groq)** | Analyzes photos, GIFs, and stickers in ~500ms using Groq's high-speed vision model (`qwen/qwen3.8-27b`) with witty, in-character banter. |
+| **Manglish Colloquial Intelligence** | Deep understanding of Kerala texting slang (`mind illa`, `aysheri`, `ellam ariyanonnundo`), zero customer-service clichés, and natural boundary respect. |
 | **RAG Architecture** | Grounds the bot in custom knowledge using Jina AI embeddings for lore and personality consistency. |
 | **Multi-Language Voice** | 12 languages for voice output (English, Malayalam, Hindi, Tamil, Telugu, Kannada, Bengali, Marathi, Gujarati, Spanish, French, German). Auto-detects script or user can set manually. |
 | **User Customization** | Per-user tone, language style, voice language, emoji frequency — all persisted across sessions. |
 | **Persistent Memory** | Remembers facts, conversation history, mood trends, and friendship level per user. |
 | **Personality Guard** | System prompt + character bible prevent persona drift. Auto-rewrites if style breaks character. |
 | **Multi-Provider Fallback** | Groq (primary) → Gemini (fallback) with Jina key rotation for rate limits. |
+| **Automated QA & A/B Testing** | Complete test suite verifying 21 use cases across conversation quality, vision, RAG isolation, and sanitization. |
 | **Auto-Restart** | Crash-proof loop with diagnostic logging via `/dbg` healthcheck. |
 | **Health Monitoring** | Built-in HTTP server for Render + UptimeRobot. |
 
@@ -389,6 +392,27 @@ delulubot/
 - Free tier has 512MB RAM
 - Bot optimized for this (no faster-whisper)
 - Check for memory leaks in logs
+
+## Automated QA & A/B Testing
+
+Delulubot includes an automated QA and A/B evaluation suite covering all core use cases:
+- **Colloquial Manglish Cues**: Validates recognition of Kerala texting slang (`mind illaallo`, `aysheri`, `ellam ariyanonnundo`, `nink enthina ithokke`, `ennitt`, `eeh`).
+- **De-Robotification**: Asserts zero customer-support platitudes (`take your time`, `whenever you feel like sharing`, `ping me later`, `no rush`) and transliterates stray Malayalam Unicode script.
+- **Multimodal Vision**: Validates image, GIF thumbnail, and WebP sticker conversions and base64 payloads.
+- **RAG Cleanliness**: Verifies developer documentation (`README.md`) is excluded and foundation RAG never pollutes casual chats.
+- **A/B Testing Scorecard**: Runs side-by-side evaluation of Variant A (Legacy Baseline) vs Variant B (Tuned Delulu), proving Variant B strictly dominates in naturalness, conciseness, and boundary respect.
+
+### Running the Test Suite:
+
+```bash
+# Run via pytest
+pytest tests/ -v
+
+# Or run via runner script
+python tests/run_all.py
+```
+
+All 21 use cases pass cleanly.
 
 ## Contributing
 

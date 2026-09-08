@@ -123,15 +123,15 @@ def de_robotify_reply(reply: str, user_message: str) -> str:
     }
     for src, dst in replacements.items():
         text = text.replace(src, dst)
+    text = text.replace("’", "'")
     # Remove customer-support style platitudes
     support_phrases = [
-        r"whenever you feel like sharing,? (i'm here|im here)\.?",
-        r"whenever you feel like,? (i'm here|im here)\.?",
-        r"take your time!?",
-        r"no rush!?",
-        r"anything on your mind later,? just ping me\.?",
-        r"just ping me later\.?",
-        r"just ping me\.?",
+        r"whenever you feel like[^\.\!\?]*[\.\!\?]?",
+        r"take your time[\!\.]?",
+        r"no rush[\!\.]?",
+        r"anything on your mind later,? just ping me[\!\.]?",
+        r"just ping me later[\!\.]?",
+        r"just ping me[\!\.]?",
     ]
     for pat in support_phrases:
         text = re.sub(pat, "", text, flags=re.IGNORECASE).strip()
