@@ -83,6 +83,8 @@ def _load_rag_documents() -> list[str]:
     docs: list[str] = []
     for fpath in sorted(rag_path.rglob("*")):
         if fpath.is_file() and fpath.suffix.lower() in {".txt", ".md", ".json", ".yml", ".yaml"}:
+            if fpath.name.lower().startswith("readme"):
+                continue
             try:
                 docs.append(fpath.read_text(encoding="utf-8"))
             except Exception:

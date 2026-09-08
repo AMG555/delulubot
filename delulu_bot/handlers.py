@@ -49,11 +49,11 @@ from .config import (
 )
 from .context import (
     build_emotion_context,
-    build_foundation_rag_context,
     build_friendship_context,
     build_personal_context,
     build_rag_context,
     build_vibe_context,
+    detect_conversation_cue,
     detect_emotion,
     extract_name,
 )
@@ -118,6 +118,33 @@ def de_robotify_reply(reply: str, user_message: str) -> str:
     }
     for src, dst in replacements.items():
         text = text.replace(src, dst)
+    # Remove customer-support style platitudes
+    support_phrases = [
+        r"whenever you feel like sharing,? (i'm here|im here)\.?",
+        r"whenever you feel like,? (i'm here|im here)\.?",
+        r"take your time!?",
+        r"no rush!?",
+        r"anything on your mind later,? just ping me\.?",
+        r"just ping me later\.?",
+        r"just ping me\.?",
+    ]
+    for pat in support_phrases:
+        text = re.sub(pat, "", text, flags=re.IGNORECASE).strip()
+    # Map common Malayalam script words that leak into Manglish to Latin
+    ml_to_manglish = {
+        "നീ": "nee",
+        "നീ?": "nee?",
+        "എന്താ": "entha",
+        "എന്താ?": "entha?",
+        "ശരി": "sheri",
+        "ഇല്ല": "illa",
+        "ഉണ്ട്": "undu",
+        "ആണ്": "aanu",
+    }
+    for ml_word, manglish_word in ml_to_manglish.items():
+        text = text.replace(ml_word, manglish_word)
+    # Strip any remaining stray Malayalam Unicode script
+    text = re.sub(r"[\u0D00-\u0D7F]+", "", text).strip()
     text = " ".join(line.strip() for line in text.splitlines() if line.strip())
     text = re.sub(r"\s{2,}", " ", text).strip()
     text = strip_unsolicited_past_talk(text, user_message)
@@ -238,15 +265,12 @@ async def get_delulu_response(user_id: str, user_message: str) -> str:
     personal_context = build_personal_context(memory, user_message)
     vibe_context = build_vibe_context(memory)
     song_request = is_song_request(user_message)
+    cue_ctx = detect_conversation_cue(user_message)
     rag_context = build_rag_context(user_message)
-    if not rag_context:
-        rag_context = build_foundation_rag_context()
-    rag_instruction = "No RAG context found for this message."
+    rag_instruction = ""
     if rag_context:
-        rag_instruction = "You have KNOWLEDGE SNIPPETS below. Use them only if relevant. Do not invent facts that are not in snippets."
-    companion_instruction = "Just talk like a friend. Be natural — don't force anything."
-    if COMPANION_ALWAYS_ON:
-        companion_instruction += " Prioritize emotional connection over advice."
+        rag_instruction = f"Relevant reference snippets:\n{rag_context}\n(Use only if directly asked)."
+    companion_instruction = "Talk like a real friend. Keep it brief and casual. If user is reluctant or teasing, play along and do NOT pry or push."
     song_instruction = ""
     if song_request:
         song_instruction = (
@@ -293,14 +317,14 @@ async def get_delulu_response(user_id: str, user_message: str) -> str:
         "Vary your response length naturally — sometimes one word, sometimes a few sentences. "
         "React emotionally first. "
         "Don't bring up past memories unless user asks. "
-        "No assistant tone. No headings/labels.\n\n"
+        "No assistant tone. No headings/labels.\n"
     )
+    if cue_ctx:
+        dynamic_instruction += f"\nCRITICAL SOCIAL CUE FOR THIS MESSAGE:\n{cue_ctx}\n\n"
     if personal_context:
         dynamic_instruction += f"Known user facts:\n{personal_context}\n\n"
     if vibe_context:
         dynamic_instruction += f"User vibe profile:\n{vibe_context}\n\n"
-    if rag_context:
-        dynamic_instruction += f"Relevant reference snippets:\n{rag_context}\n\n"
 
     openai_messages = []
     recent = memory["conversation_history"][-12:]

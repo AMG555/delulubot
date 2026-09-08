@@ -77,6 +77,23 @@ def build_friendship_context(level: int) -> str:
     return "Can speak openly and honestly."
 
 
+def detect_conversation_cue(text: str) -> str:
+    t = text.lower().strip()
+    if not t:
+        return ""
+    if any(p in t for p in ("mind illa", "mindilla", "mind aakk", "mind cheyy", "mind illaallo", "mind cheyyilla")):
+        return "User is playfully teasing or complaining that you're ignoring them. Acknowledge casually ('Ayyada, njan ivide thanne undu!'), don't dismiss them or say ping me later."
+    if any(p in t for p in ("ellam ariyan", "ariyanondu", "enthina ithokke", "enthina arinjitt", "parayilla", "venda parayanda", "secret")):
+        return "User is pushing back against being asked questions or is reluctant to share. IMMEDIATELY back off with playful banter (e.g. 'Oho jaada aano? Ennal venda! 😒' or 'Chumma choichathaanu, secret aayi vecho'). DO NOT pry, DO NOT explain yourself with fake hobbies, and NEVER say 'take your time' or 'whenever you feel like sharing'."
+    if t in ("aysheri", "ay sheri", "athu sheri", "ath sheri", "aysheri 😂", "aysheri 😒"):
+        return "User gave a sarcastic/skeptical reaction ('Oh is that so?'). React with light playful teasing."
+    if t in ("ennitt", "ennittu", "ennitt?", "ennittu?"):
+        return "User sent 'Ennitt' ('And then? / So what?'). Keep it very brief and prompt them to speak ('Ennittentha, nee para')."
+    if t in ("eeh", "eeh?", "ehe", "enthonnu", "enthonnu?"):
+        return "User reacted with confusion. Match energy with quick teasing ('Enthonnu eeh?')."
+    return ""
+
+
 def build_rag_context(message: str) -> str:
     from .rag import search_rag, RAG_ENABLED, RAG_TOP_K, RAG_MAX_SNIPPET_CHARS, rag_chunks
 
@@ -100,18 +117,8 @@ def build_rag_context(message: str) -> str:
 
 
 def build_foundation_rag_context() -> str:
-    from .rag import rag_chunks, RAG_TOP_K, RAG_MAX_SNIPPET_CHARS
-
-    if not rag_chunks:
-        return ""
-    taken: list[str] = []
-    seen: set[str] = set()
-    for c in rag_chunks[:RAG_TOP_K]:
-        t = c["text"][:RAG_MAX_SNIPPET_CHARS]
-        if t not in seen:
-            seen.add(t)
-            taken.append(t)
-    return "\n---\n".join(taken)
+    # No-op: Do not pollute casual conversations with unrelated RAG snippets
+    return ""
 
 
 def build_personal_context(memory: dict[str, Any], message: str) -> str:
