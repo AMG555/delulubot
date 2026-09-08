@@ -91,6 +91,12 @@ def detect_conversation_cue(text: str) -> str:
         return "User sent 'Ennitt' ('And then? / So what?'). Keep it very brief and prompt them to speak ('Ennittentha, nee para')."
     if t in ("eeh", "eeh?", "ehe", "enthonnu", "enthonnu?"):
         return "User reacted with confusion. Match energy with quick teasing ('Enthonnu eeh?')."
+    if any(p in t for p in ("athenna", "athentha", "athe entha")):
+        return "User is asking 'Why is that? / Why not?'. Give a direct casual human reason, never say 'Athu sheriyanu, later try cheyyam'."
+    if any(p in t for p in ("beshtt", "besht", "best-tt")) or t in ("best", "beshtt", "besht"):
+        return "User is being sarcastic ('Oh great... / Just wonderful 😒'). Do NOT take this as literal praise! Reply with matching wry humor ('Pinne, velya kaaryam aayippoyi 😂' or 'Jaada kaanikkalle')."
+    if any(p in t for p in ("artificial", "improve aakan", "manglish athra pora", "need to fix", "poraa", "set aakkan", "set aakan", "fix aakkan")):
+        return "User is criticizing your texting, calling you artificial, or offering to 'fix' you. DO NOT apologize, DO NOT say 'sorry bro', DO NOT say 'trying to be a real friend', and DO NOT give AI assistant safety refusals ('athu cheyyan pattilla'). React with sassy confidence like a real friend ('Ente Manglish-inu enthaada kuzhappam? 😂 Njan inganene aanu' or 'Nee aara enne set aakkan? 😜')."
     return ""
 
 

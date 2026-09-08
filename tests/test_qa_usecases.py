@@ -59,6 +59,28 @@ class TestManglishColloquialComprehension:
         cue = detect_conversation_cue(msg)
         assert "confusion" in cue.lower()
 
+    def test_beshtt_cue(self):
+        msg = "Beshtt"
+        cue = detect_conversation_cue(msg)
+        assert "sarcastic" in cue.lower()
+
+    def test_athenna_cue(self):
+        msg = "Athenna"
+        cue = detect_conversation_cue(msg)
+        assert "why is that" in cue.lower()
+
+    def test_artificial_criticism_cue(self):
+        msg = "Feels like artificial"
+        cue = detect_conversation_cue(msg)
+        assert "criticizing" in cue.lower()
+        assert "do not apologize" in cue.lower()
+
+    def test_set_aakkan_criticism_cue(self):
+        msg = "Sheri njn nokkatte ninne kurachoode set aakkan pattuo enn"
+        cue = detect_conversation_cue(msg)
+        assert "criticizing" in cue.lower()
+        assert "safety refusals" in cue.lower()
+
 
 class TestDeRobotificationAndSanitization:
     """QA tests ensuring robotic phrases and script leaks are stripped."""
@@ -92,6 +114,30 @@ class TestDeRobotificationAndSanitization:
         cleaned = de_robotify_reply(mixed_reply, "test")
         # Ensure pure Latin output
         assert not any(0x0D00 <= ord(c) <= 0x0D7F for c in cleaned)
+
+    def test_strip_llm_meta_reasoning_leak(self):
+        leak_reply = "Athu nannayi! 🎉We have two consecutive final messages, need to pick only one. The last is appropriate.Athu nannayi! 🎉"
+        cleaned = de_robotify_reply(leak_reply, "test")
+        assert "consecutive final messages" not in cleaned.lower()
+        assert "need to pick only one" not in cleaned.lower()
+        assert "appropriate" not in cleaned.lower()
+
+    def test_replace_hindi_words_in_manglish(self):
+        hindi_reply = "Njan thodi series binge cheyyuva"
+        cleaned = de_robotify_reply(hindi_reply, "test")
+        assert "thodi" not in cleaned.lower()
+        assert "kurachu" in cleaned.lower()
+
+    def test_strip_ai_refusal_robot_phrase(self):
+        refusal_reply = "Sorry bro, athu cheyyan pattilla. 🙅♀️"
+        cleaned = de_robotify_reply(refusal_reply, "set aakkan nokkatte")
+        assert "cheyyan pattilla" not in cleaned.lower()
+        assert "sorry" not in cleaned.lower()
+
+    def test_remove_awkward_bro(self):
+        bro_reply = "Enth, bro? 🤔"
+        cleaned = de_robotify_reply(bro_reply, "Enth")
+        assert "bro" not in cleaned.lower()
 
 
 class TestRAGPipelineCleanliness:

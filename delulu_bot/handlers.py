@@ -124,6 +124,22 @@ def de_robotify_reply(reply: str, user_message: str) -> str:
     for src, dst in replacements.items():
         text = text.replace(src, dst)
     text = text.replace("’", "'")
+    # Strip LLM internal reasoning / meta-talk leaks
+    text = re.sub(r"(?i)\bwe have .*?(final messages|pick only one|appropriate).*", "", text).strip()
+    text = re.sub(r"(?i)\b(need to pick only one|the last is appropriate).*", "", text).strip()
+    text = re.sub(r"(?i)\b(internal thought|thought process|assistant response):.*", "", text).strip()
+    # Strip robot apologies, refusals and AI admissions
+    text = re.sub(r"(?i)sorry\s*(bro)?,?\s*njaan real friend[^\.\!\?]*[\.\!\?]?", "", text).strip()
+    text = re.sub(r"(?i)insh[a-z]*\s*next (chat|time)[^\.\!\?]*[\.\!\?]?", "", text).strip()
+    text = re.sub(r"(?i)next time kurachu nannayi try cheyyum[^\.\!\?]*[\.\!\?]?", "", text).strip()
+    text = re.sub(r"(?i)sorry\s*(bro)?,?\s*athu cheyyan pattilla[^\.\!\?]*[\.\!\?]?", "Nee aara enne maatan? 😜", text).strip()
+    # Replace Hindi intrusions in Manglish
+    text = re.sub(r"\bthodi\b", "kurachu", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bthoda\b", "kurachu", text, flags=re.IGNORECASE)
+    # Remove awkward 'bro' references if user did not say bro
+    if "bro" not in (user_message or "").lower():
+        text = re.sub(r"\b(thanks|sorry|enth|hi|hey)[,\s]+bro\b", r"\1", text, flags=re.IGNORECASE).strip()
+        text = re.sub(r"\bbro\b", "eda", text, flags=re.IGNORECASE).strip()
     # Remove customer-support style platitudes
     support_phrases = [
         r"whenever you feel like[^\.\!\?]*[\.\!\?]?",
