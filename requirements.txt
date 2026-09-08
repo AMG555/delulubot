@@ -4,3 +4,4 @@ google-generativeai==0.8.5
 gTTS==2.5.4
 edge-tts==7.2.3
 openai>=1.0.0
+Pillow>=10.0.0

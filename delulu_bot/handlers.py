@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import io
 import logging
 import os
 import random
@@ -12,6 +14,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
+from PIL import Image
 from telegram import Update
 from telegram.ext import ContextTypes, filters
 
@@ -36,6 +39,8 @@ from .config import (
     CHARACTER_GUARD_ENABLED,
     CHARACTER_GUARD_RETRIES,
     COMPANION_ALWAYS_ON,
+    GROQ_VISION_MODEL,
+    GROQ_VISION_FALLBACK_MODELS,
     GTTS_AVAILABLE,
     MAX_TOKENS,
     SWEET_VOICE_HINTS,
@@ -572,11 +577,196 @@ async def handle_audio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
-async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(
-        "Ooh, photo! ✨ Enikku kaanaan pattilla (I can't see it), "
-        "but I'm sure it's awesome. Parayu entha uddeshichath?"
+def encode_image_bytes_to_base64_jpeg(image_bytes: bytes, max_dim: int = 1024) -> str:
+    """Resize image if needed and convert to base64 JPEG string."""
+    with Image.open(io.BytesIO(image_bytes)) as img:
+        img = img.convert("RGB")
+        w, h = img.size
+        if max(w, h) > max_dim:
+            scale = max_dim / max(w, h)
+            new_size = (max(1, int(w * scale)), max(1, int(h * scale)))
+            img = img.resize(new_size, Image.Resampling.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85)
+        return base64.b64encode(buf.getvalue()).decode("utf-8")
+
+
+async def generate_delulu_vision_reply(
+    user_id: str,
+    image_bytes: bytes,
+    media_type_label: str = "photo",
+    user_caption: str = "",
+) -> str:
+    """Send image and prompt to Groq vision model and return in-character Delulu reply."""
+    memory = get_user_memory(user_id)
+    level = memory.get("friendship_level", 0)
+    user_name = memory.get("name", "eda/edi")
+    user_tone = memory.get("tone", "default")
+    tone_instruction = TONE_STYLES.get(user_tone, TONE_STYLES["default"])
+    user_lang_style = memory.get("lang_style", "manglish")
+    personal_context = build_personal_context(memory, user_caption)
+
+    try:
+        b64_image = encode_image_bytes_to_base64_jpeg(image_bytes)
+    except Exception as e:
+        logger.error(f"Image encoding error: {e}")
+        return "Ayyooo, ee image open cheyyaan pattiyilla! Format issue aano? 😅"
+
+    prompt_text = (
+        f"[User sent a {media_type_label}."
+        + (f" Caption: '{user_caption}'" if user_caption else "")
+        + "]\nReact naturally as Delulu. Notice what is in the image, comment or banter like a real friend. Keep it short (1-2 sentences) in Manglish."
     )
+
+    sys_prompt = build_system_instruction() + "\n\n=== VISION CONVERSATION CONTEXT ===\n"
+    sys_prompt += (
+        f"user_name={user_name}. friendship_level={level}. "
+        f"Tone: {tone_instruction}. "
+        f"Language style: {LANG_STYLES.get(user_lang_style, LANG_STYLES['manglish'])}.\n"
+        "React naturally to the visual content. Sarcastic, funny, or sweet depending on what you see. "
+        "Do NOT speak like an AI image analyzer or describe the image like a robot. Just react to it like a friend texting!"
+    )
+    if personal_context:
+        sys_prompt += f"\nKnown user facts:\n{personal_context}\n"
+
+    messages = [{"role": "system", "content": sys_prompt}]
+    recent = memory.get("conversation_history", [])[-8:]
+    for msg in recent:
+        messages.append({"role": msg["role"], "content": msg["content"]})
+
+    messages.append({
+        "role": "user",
+        "content": [
+            {"type": "text", "text": prompt_text},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64_image}"}},
+        ],
+    })
+
+    models_to_try = [GROQ_VISION_MODEL] + GROQ_VISION_FALLBACK_MODELS
+    reply = ""
+    for model_name in models_to_try:
+        try:
+            response = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda m=model_name: groq_client.chat.completions.create(
+                    model=m,
+                    messages=messages,
+                    temperature=TEMPERATURE,
+                    max_tokens=MAX_TOKENS,
+                    timeout=60,
+                ),
+            )
+            raw = (response.choices[0].message.content or "").strip()
+            raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+            reply = de_robotify_reply(raw, user_caption or f"sent {media_type_label}")
+            if reply:
+                break
+        except Exception as e:
+            logger.warning(f"Vision error on {model_name}: {e}")
+
+    if not reply:
+        reply = "Ayyada, photo load aavan kurachu scene aayi. Entha athil undaayirunne? 😂"
+
+    memory_label = f"[{media_type_label.capitalize()}" + (f": {user_caption}" if user_caption else "") + "]"
+    update_memory(user_id, memory_label, reply)
+    return reply
+
+
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message or not update.message.photo:
+        return
+    user = update.effective_user
+    user_id = str(user.id)
+    chat_id = update.effective_chat.id
+    caption = (update.message.caption or "").strip()
+
+    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+
+    try:
+        photo = update.message.photo[-1]
+        file = await photo.get_file()
+        file_bytes = await file.download_as_bytearray()
+        reply = await generate_delulu_vision_reply(
+            user_id=user_id,
+            image_bytes=bytes(file_bytes),
+            media_type_label="photo",
+            user_caption=caption,
+        )
+    except Exception as e:
+        logger.error(f"Error handling photo: {e}", exc_info=True)
+        reply = "Ayyooo... photo download aayilla! Oru vattam koodi ayacho? 😅"
+
+    await update.message.reply_text(reply)
+
+
+async def handle_animation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message or not update.message.animation:
+        return
+    user = update.effective_user
+    user_id = str(user.id)
+    chat_id = update.effective_chat.id
+    anim = update.message.animation
+    caption = (update.message.caption or "").strip()
+
+    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+
+    try:
+        if anim.thumbnail:
+            thumb_file = await anim.thumbnail.get_file()
+            image_bytes = bytes(await thumb_file.download_as_bytearray())
+        else:
+            file = await anim.get_file()
+            image_bytes = bytes(await file.download_as_bytearray())
+
+        reply = await generate_delulu_vision_reply(
+            user_id=user_id,
+            image_bytes=image_bytes,
+            media_type_label="GIF / meme animation",
+            user_caption=caption,
+        )
+    except Exception as e:
+        logger.error(f"Error handling animation: {e}", exc_info=True)
+        reply = "Haha, GIF load aayilla! Entha meme aayirunno? 😂"
+
+    await update.message.reply_text(reply)
+
+
+async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message or not update.message.sticker:
+        return
+    user = update.effective_user
+    user_id = str(user.id)
+    chat_id = update.effective_chat.id
+    sticker = update.message.sticker
+    sticker_emoji = sticker.emoji or ""
+
+    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+
+    try:
+        image_bytes = None
+        if sticker.thumbnail:
+            thumb_file = await sticker.thumbnail.get_file()
+            image_bytes = bytes(await thumb_file.download_as_bytearray())
+        elif not sticker.is_animated and not sticker.is_video:
+            file = await sticker.get_file()
+            image_bytes = bytes(await file.download_as_bytearray())
+
+        if image_bytes:
+            label = f"sticker (emoji: {sticker_emoji})" if sticker_emoji else "sticker"
+            reply = await generate_delulu_vision_reply(
+                user_id=user_id,
+                image_bytes=image_bytes,
+                media_type_label=label,
+                user_caption=f"Sticker {sticker_emoji}" if sticker_emoji else "",
+            )
+        else:
+            prompt = f"[User sent a sticker: {sticker_emoji}]. React naturally to this sticker vibe as Delulu."
+            reply = await get_delulu_response(user_id, prompt)
+    except Exception as e:
+        logger.error(f"Error handling sticker: {e}", exc_info=True)
+        reply = f"Aha sticker! {sticker_emoji} Vibe set aanallo! 😂"
+
+    await update.message.reply_text(reply)
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:

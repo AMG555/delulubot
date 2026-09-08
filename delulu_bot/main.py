@@ -36,6 +36,8 @@ from .handlers import (
     handle_voice,
     handle_audio,
     handle_photo,
+    handle_animation,
+    handle_sticker,
     error_handler,
 )
 from .prompts import DELULU_CHARACTER_BIBLE
@@ -131,6 +133,8 @@ def _run_bot_webhook():
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.AUDIO, handle_audio))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    app.add_handler(MessageHandler(filters.ANIMATION, handle_animation))
+    app.add_handler(MessageHandler(filters.Sticker.ALL, handle_sticker))
     app.add_error_handler(error_handler)
 
     hostname = os.environ.get("RENDER_EXTERNAL_HOSTNAME", "")
