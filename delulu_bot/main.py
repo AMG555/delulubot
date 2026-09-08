@@ -86,6 +86,10 @@ def run_startup_checks() -> bool:
     else:
         print("INFO: Voice output: Disabled")
 
+    if config.RAG_ENABLED and rag_state.get("chunks", 0) == 0:
+        from .rag import load_chunks
+        load_chunks()
+
     if rag_state.get("chunks", 0) > 0:
         print(f"OK: RAG: {rag_state['chunks']} chunks loaded")
     else:
