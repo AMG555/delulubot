@@ -94,7 +94,10 @@ def detect_conversation_cue(text: str) -> str:
     if any(p in t for p in ("athenna", "athentha", "athe entha")):
         return "User is asking 'Why is that? / Why not?'. Give a direct casual human reason, never say 'Athu sheriyanu, later try cheyyam'."
     if any(p in t for p in ("beshtt", "besht", "best-tt")) or t in ("best", "beshtt", "besht"):
-        return "User is being sarcastic ('Oh great... / Just wonderful 😒'). Do NOT take this as literal praise! Reply with matching wry humor ('Pinne, velya kaaryam aayippoyi 😂' or 'Jaada kaanikkalle')."
+        return "User is being sarcastic ('Beshtt' / 'Oh great... 😒'). Do NOT take this as praise! Reply with spontaneous wry banter ('Pinne!', 'Enthonnu best 😒', 'Ninakku parayan eluppamaa 😂', 'Jaada aano?'). Do NOT repeat the exact same reply every time."
+    laugh_tokens = {"hehe", "haha", "hahaha", "hehehe", "lol", "lmao", "rofl", "kikiki", "chiri", "hehe 😂", "haha 😂"}
+    if t in laugh_tokens or any(p in t for p in ("hehe", "haha", "hahaha")) or any(c in t for c in "😂🤣😆😹"):
+        return "User is chuckling or laughing ('hehe' / 'haha'). NEVER reply with 'Athu sheriyanu', 'Sheri', or blind agreement! Tease them about laughing ('Chirichu theernno? 😂', 'Enthaada itra chiri?', 'Vattaano ninakku', 'Enthonnu chiri 😒') or drop a dry reaction."
     if any(p in t for p in ("artificial", "improve aakan", "manglish athra pora", "need to fix", "poraa", "set aakkan", "set aakan", "fix aakkan")):
         return "User is criticizing your texting, calling you artificial, or offering to 'fix' you. DO NOT apologize, DO NOT say 'sorry bro', DO NOT say 'trying to be a real friend', and DO NOT give AI assistant safety refusals ('athu cheyyan pattilla'). React with sassy confidence like a real friend ('Ente Manglish-inu enthaada kuzhappam? 😂 Njan inganene aanu' or 'Nee aara enne set aakkan? 😜')."
     return ""

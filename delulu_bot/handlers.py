@@ -140,6 +140,21 @@ def de_robotify_reply(reply: str, user_message: str) -> str:
     if "bro" not in (user_message or "").lower():
         text = re.sub(r"\b(thanks|sorry|enth|hi|hey)[,\s]+bro\b", r"\1", text, flags=re.IGNORECASE).strip()
         text = re.sub(r"\bbro\b", "eda", text, flags=re.IGNORECASE).strip()
+    # Strip misplaced agree-bot phrases ('Athu sheriyanu') on laughter, sarcasm, or questions
+    u_lower = (user_message or "").lower().strip()
+    is_user_laughing = any(l in u_lower for l in ("hehe", "haha", "lol", "lmao", "rofl", "kikiki", "😂", "🤣", "😆", "chiri"))
+    if is_user_laughing:
+        if re.search(r"(?i)\b(athu\s*sheriyan[ua]|ath\s*sheriyan[ua]|sheriyanu)\b", text):
+            text = random.choice([
+                "Enthaada ingane chirikkunne? 😂",
+                "Chirichu theernno? 😜",
+                "Kandille ninte chiri 😒",
+                "Chirikkalle eda!",
+                "Enthonnu chiri ith 😂",
+            ])
+    if any(k in u_lower for k in ("athenna", "athentha", "besht", "beshtt")):
+        text = re.sub(r"(?i)^athu\s*sheriyan[ua],?\s*", "", text).strip()
+        text = re.sub(r"(?i)\blater try cheyyam[^\.\!\?]*[\.\!\?]?", "Athu angane aanu 😜", text).strip()
     # Remove customer-support style platitudes
     support_phrases = [
         r"whenever you feel like[^\.\!\?]*[\.\!\?]?",

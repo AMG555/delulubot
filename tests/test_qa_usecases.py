@@ -81,6 +81,12 @@ class TestManglishColloquialComprehension:
         assert "criticizing" in cue.lower()
         assert "safety refusals" in cue.lower()
 
+    def test_hehe_laughter_cue(self):
+        msg = "hehe"
+        cue = detect_conversation_cue(msg)
+        assert "laughing" in cue.lower()
+        assert "never reply with 'athu sheriyanu'" in cue.lower()
+
 
 class TestDeRobotificationAndSanitization:
     """QA tests ensuring robotic phrases and script leaks are stripped."""
@@ -138,6 +144,19 @@ class TestDeRobotificationAndSanitization:
         bro_reply = "Enth, bro? 🤔"
         cleaned = de_robotify_reply(bro_reply, "Enth")
         assert "bro" not in cleaned.lower()
+
+    def test_strip_agree_bot_on_laughter(self):
+        robotic_reply = "Athu sheriyanu 😂"
+        cleaned = de_robotify_reply(robotic_reply, "hehe")
+        assert "athu sheriyanu" not in cleaned.lower()
+        # Should replace with lively tease on the laugh
+        assert any(p in cleaned.lower() for p in ("chiri", "theernno", "eda"))
+
+    def test_strip_misplaced_athu_sheriyanu_on_athenna(self):
+        robotic_reply = "Athu sheriyanu, later try cheyyam! 😌"
+        cleaned = de_robotify_reply(robotic_reply, "Athenna")
+        assert "later try cheyyam" not in cleaned.lower()
+        assert not cleaned.lower().startswith("athu sheriyanu")
 
 
 class TestRAGPipelineCleanliness:
