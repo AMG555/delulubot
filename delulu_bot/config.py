@@ -27,7 +27,7 @@ JINA_API_KEYS_RAW = os.getenv("JINA_API_KEYS", "")
 JINA_MODEL = os.getenv("JINA_MODEL", "jina-embeddings-v3")
 
 PORT = int(os.getenv("PORT", "10000"))
-TIMEOUT_SECONDS = int(os.getenv("TIMEOUT_SECONDS", "60"))
+TIMEOUT_SECONDS = int(os.getenv("TIMEOUT_SECONDS", "15"))
 MAX_TOKENS = 300
 TEMPERATURE = 0.8
 

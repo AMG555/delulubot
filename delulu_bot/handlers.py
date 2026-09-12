@@ -107,7 +107,7 @@ BANNED_IDENTITY_PATTERNS = (
 def de_robotify_reply(reply: str, user_message: str) -> str:
     text = (reply or "").strip()
     if not text:
-        return text
+        return "Eda... kettilla, onnude para!"
     if is_structured_user_request(user_message):
         return text
     text = re.sub(r"^(sure|certainly|of course|absolutely|definitely)[,!.:\-\s]*", "", text, flags=re.IGNORECASE)
@@ -155,6 +155,30 @@ def de_robotify_reply(reply: str, user_message: str) -> str:
     if any(k in u_lower for k in ("athenna", "athentha", "besht", "beshtt")):
         text = re.sub(r"(?i)^athu\s*sheriyan[ua],?\s*", "", text).strip()
         text = re.sub(r"(?i)\blater try cheyyam[^\.\!\?]*[\.\!\?]?", "Athu angane aanu 😜", text).strip()
+    # Strip unnatural 'Athu mind illa' machine translation of 'Never mind'
+    text = re.sub(r"(?i)\bathu\s*mind\s*illa,?\s*", "Athu potte, ", text).strip()
+    text = re.sub(r"(?i)\b(mind\s*illa,\s*)+(kayy\s*illa,?\s*)?(enna\??)?", "", text).strip()
+    text = re.sub(r"(?i)\bathu\s*mind\s*illa\b", "Athu potte", text).strip()
+    # Sanitize tone-deaf responses when user is in emotional distress
+    is_distressed = any(w in u_lower for w in ("maduthu", "kayyinn", "down", "lost", "sheriyavunnilla", "kopp", "nadapadi", "onnoolla"))
+    if is_distressed:
+        # Strip coffee / drink recommendations during deep distress
+        text = re.sub(r"(?i)(onnum\s*)?kurachu\s*chill\s*aayi\s*coffee\s*kudichal\s*mathi[^\.\!\?]*[\.\!\?]?", "Njan undo koode, entha pattiye para.", text).strip()
+        text = re.sub(r"(?i),?\s*coffee\s*(kooduthal\??|kudikk)[^\.\!\?]*[\.\!\?]?", "", text).strip()
+        # Remove laughing/smirking emojis during user crisis
+        text = re.sub(r"[😂🤣😅🙃😏]", "", text).strip()
+    # Handle 'Poya?' presence check
+    if u_lower in ("poya?", "poyo?", "evide poyi", "evide poyatha", "evdya"):
+        text = "Ivide thanne undu eda, net oru second slow aayatha! Para, njan kelkkunnu."
+    # Handle literal misunderstandings of 'pidich keranam' and 'kayyinn poyi'
+    if "pidich" in u_lower and ("vendi pidikkan" in text.lower() or "athu venda" in text.lower()):
+        text = "Pattum eda, onnude try cheyy. Oronnaayi set aakkam."
+    if "kayy illa" in text.lower() or ("kayy" in u_lower and "kayy illa" in text.lower()):
+        text = "Enthaada ithra scene aayath? Karyam para, njan kelkkam."
+    # Handle user frustration at not being understood / bot defenses
+    if any(w in u_lower for w in ("manasilav", "manassilav", "prayojanom", "prayojanam", "human allallo")):
+        if any(w in text.lower() for w in ("real friend aane", "robot alla", "mind illa", "thinnakkam")):
+            text = "Sorry da, njan chumma alamb aakki. Enikku manasilavunnu nee nalla tensionil aanennu. Para, njan full kelkkan ready aanu."
     # Remove customer-support style platitudes
     support_phrases = [
         r"whenever you feel like[^\.\!\?]*[\.\!\?]?",
@@ -184,6 +208,8 @@ def de_robotify_reply(reply: str, user_message: str) -> str:
     text = " ".join(line.strip() for line in text.splitlines() if line.strip())
     text = re.sub(r"\s{2,}", " ", text).strip()
     text = strip_unsolicited_past_talk(text, user_message)
+    if not text.strip():
+        text = "Eda... kettilla, onnude para!"
     return text
 
 
@@ -260,7 +286,7 @@ async def _groq_generate_with_guard(
                 temperature=TEMPERATURE,
                 max_tokens=MAX_TOKENS,
                 top_p=0.9,
-                timeout=60,
+                timeout=TIMEOUT_SECONDS,
             ),
         )
         reply = (response.choices[0].message.content or "").strip()
@@ -439,10 +465,10 @@ async def get_delulu_response(user_id: str, user_message: str) -> str:
                     logger.error(f"Gemini Error on {model_name}: {e}")
 
     error_responses = [
-        "Ayyooo... ente ghost powers glitch aayi 👻⚡ Try again cheyy!",
-        "Eda... njan invisible aayi poyi 👻 Once more try cheyy!",
-        "Phone possession temporarily failed 😂👻 Try again!",
-        "Ente signal poyi... ghost network issues 📶👻 Veeendum try cheyy!",
+        "Eda ivide network oru second slow aayi poyi... kettilla, onnude parayu!",
+        "Ayyoo connection glitch aayi poyi 😅 Onnude para, njan kelkkam.",
+        "Ivide signal drop aayatha eda... nee paranjath onnude parayuo?",
+        "Eda njan ivide thanne undu, net scene aayatha. Once more para!",
     ]
     return random.choice(error_responses)
 
@@ -463,7 +489,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         memory["name"] = user.first_name
 
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-    response = await get_delulu_response(user_id, user_message)
+    try:
+        response = await get_delulu_response(user_id, user_message)
+    except Exception as e:
+        logger.error(f"Error getting delulu response: {e}")
+        response = "Ivide thanne undu eda, net oru second slow aayatha! Onnude para."
+
+    if not response or not response.strip():
+        response = "Ivide thanne undu eda, onnude parayu!"
 
     if VOICE_OUTPUT_ENABLED and voice_enabled and get_tts_engine() != "none":
         temp_dir = Path(tempfile.mkdtemp(prefix="delulu_"))
@@ -482,11 +515,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 await update.message.reply_text(response)
         except Exception as e:
             logger.error(f"Voice reply error: {e}")
-            await update.message.reply_text(response)
+            try:
+                await update.message.reply_text(response)
+            except Exception as e2:
+                logger.error(f"Fallback reply_text failed: {e2}")
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
     else:
-        await update.message.reply_text(response)
+        try:
+            await update.message.reply_text(response)
+        except Exception as e:
+            logger.error(f"reply_text error: {e}")
+            try:
+                await context.bot.send_message(chat_id=chat_id, text=response)
+            except Exception as e2:
+                logger.error(f"Direct send_message failed: {e2}")
 
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

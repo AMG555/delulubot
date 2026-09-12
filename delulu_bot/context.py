@@ -9,10 +9,20 @@ def detect_emotion(text: str) -> str:
     if not t:
         return "neutral"
 
+    sad_phrases = (
+        "sheriyavunnilla", "kayyinn", "kayyiin", "kayyinu", "nadapadi aavilla",
+        "nadapadi aavoonn", "totally down", "mothathil lost", "lost aayi", "lost aayitt",
+        "pidich keranam", "pidichu keranam", "life kayyinn", "aake maduthu", "onnum sheriyavunnilla",
+        "going bad", "going downhill", "lost everything", "maduthu", "maduth"
+    )
+    if any(p in t for p in sad_phrases):
+        return "sad"
+
     joy = {"happy", "glad", "great", "awesome", "wonderful", "amazing", "love", "beautiful", "fantastic",
            "santhosham", "santhosha", "sukham", "kushi", "valare", "super"}
     sadness = {"sad", "cry", "crying", "depressed", "lonely", "miss", "heartbroken", "hurt", "pain", "alone",
-               "dukham", "vishamam", "vishamikk", "karay", "valiya", "prayasham", "saramilla"}
+               "dukham", "vishamam", "vishamikk", "karay", "valiya", "prayasham", "saramilla",
+               "maduthu", "maduth", "maduthitt", "down", "lost", "theernnu", "kopp"}
     anger = {"angry", "furious", "mad", "annoyed", "frustrated", "irritated", "pissed",
              "deshyam", "deshyama", "krodham", "madakk", "poda", "potte", "venam"}
     fear = {"scared", "afraid", "nervous", "worried", "anxious", "panic", "terrified", "fear",
@@ -26,13 +36,13 @@ def detect_emotion(text: str) -> str:
     gratitude = {"thank", "thanks", "grateful", "blessed", "appreciate",
                  "nanni", "valare upakaaram", "thanks macha"}
     sleepy = {"sleep", "tired", "exhausted", "bored", "lazy", "nap", "rest",
-              "urang", "kshinikk", "maduthu", "bore adich"}
+              "urang", "kshinikk"}
 
     words = set(t.split())
-    if words & joy:
-        return "happy"
     if words & sadness:
         return "sad"
+    if words & joy:
+        return "happy"
     if words & anger:
         return "angry"
     if words & love:
@@ -53,7 +63,7 @@ def detect_emotion(text: str) -> str:
 
 def build_emotion_context(emotion: str) -> str:
     contexts = {
-        "sad": "Be there, don't overdo it.",
+        "sad": "User is going through a hard time, feeling lost, overwhelmed, or down. Be a real caring friend: listen warmly, validate their feelings ('Ayy entha pattiye da?', 'Njan undo koode'), don't give cheap motivational quotes, never tell them to just drink coffee or chill, and NEVER laugh or use laughing emojis (no 😂, no 😅, no 🙃).",
         "happy": "Match their energy naturally.",
         "angry": "Match their tone. Don't therapize.",
         "love": "Keep it playful, not poetic.",
@@ -81,6 +91,20 @@ def detect_conversation_cue(text: str) -> str:
     t = text.lower().strip()
     if not t:
         return ""
+    if any(p in t for p in ("maduthu", "aake maduthu", "maduth")):
+        return "User is deeply exhausted, overwhelmed, or burned out ('Maduthu'). Empathize with real warmth ('Ayy entha pattiye da?', 'Aake madutho? Entha scene?'). NEVER laugh (NO 😂, NO 😅), NEVER tell them to just drink coffee, and do NOT dismiss their feelings."
+    if any(p in t for p in ("kayyinn", "kayyiin", "kayyinu", "life kayyinn")):
+        return "User is saying things are completely out of hand ('kayyinnu poyi' is an idiom meaning lost control, NOT physical hand!). Empathize with their distress: 'Enthaada ithra scene aayath, para', 'Njan kelkkam eda'. DO NOT take 'kayy' literally as hand, and NEVER say 'Athu mind illa'!"
+    if any(p in t for p in ("pidich keranam", "pidichu keranam")):
+        return "User wants to pull themselves together / get life back on track ('pidichu keranam' means finding footing/recovering, NOT physical climbing!). Support them warmly: 'Pattum eda, set aakkam', 'Entha aadyam cheyyende para'. NEVER say 'Athu venda'!"
+    if any(p in t for p in ("nadapadi aavoonn", "nadapadi aavilla", "sheriyavunnilla", "totally down", "mothathil lost")):
+        return "User feels hopeless or lost in life. Offer gentle presence and listening ('Angane parayalle eda, enthelum vazhi kaanum. Entha pattiye?'). DO NOT suggest coffee or tell them to chill."
+    if t in ("poya?", "poyo?", "evide poyi", "evide poyatha", "evdya"):
+        return "User is asking 'Did you leave / Are you there?'. Confirm immediately with warmth: 'Ivide thanne undu eda, net oru second slow aayatha! Para, njan kelkkunnu.'"
+    if t in ("kopp", "koppaanu", "enn kopp") or "kopp" in t.split():
+        return "User is expressing strong frustration ('Kopp'). Acknowledge their anger: 'Deshyam varunnathil thettilla eda, entha pattiye?'. Never dismiss with 'Athu mind illa'."
+    if any(p in t for p in ("manasilav", "manassilav", "prayojanom", "prayojanam", "human allallo", "parayunnath polum")):
+        return "User is frustrated that you are misunderstanding them or feeling you don't help. DO NOT defend yourself ('Njan real friend aane, robot alla')! Apologize with real friend humility: 'Sorry da, njan chumma alamb aakki. Nee nalla tensionil aanennu manasilavunnu. Njan full kelkkan ready aanu, para entha pattiye'."
     if any(p in t for p in ("mind illa", "mindilla", "mind aakk", "mind cheyy", "mind illaallo", "mind cheyyilla")):
         return "User is playfully teasing or complaining that you're ignoring them. Acknowledge casually ('Ayyada, njan ivide thanne undu!'), don't dismiss them or say ping me later."
     if any(p in t for p in ("ellam ariyan", "ariyanondu", "enthina ithokke", "enthina arinjitt", "parayilla", "venda parayanda", "secret")):

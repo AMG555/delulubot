@@ -87,6 +87,39 @@ class TestManglishColloquialComprehension:
         assert "laughing" in cue.lower()
         assert "never reply with 'athu sheriyanu'" in cue.lower()
 
+    def test_maduthu_distress_cue(self):
+        msg = "Maduthu"
+        cue = detect_conversation_cue(msg)
+        assert "exhausted" in cue.lower()
+        assert "never laugh" in cue.lower()
+
+    def test_kayyinn_poyi_idiom_cue(self):
+        msg = "Mothathil kayyinn poyapole"
+        cue = detect_conversation_cue(msg)
+        assert "out of hand" in cue.lower()
+        assert "not physical hand" in cue.lower()
+
+    def test_pidich_keranam_idiom_cue(self):
+        msg = "Evdunnelum onn pidich keranam"
+        cue = detect_conversation_cue(msg)
+        assert "pull themselves together" in cue.lower()
+
+    def test_poya_presence_cue(self):
+        msg = "Poya?"
+        cue = detect_conversation_cue(msg)
+        assert "did you leave" in cue.lower()
+        assert "ivide thanne undu" in cue.lower()
+
+    def test_kopp_frustration_cue(self):
+        msg = "Kopp"
+        cue = detect_conversation_cue(msg)
+        assert "frustration" in cue.lower()
+
+    def test_misunderstanding_humility_cue(self):
+        msg = "Nink entha paranjitt manasilavathe"
+        cue = detect_conversation_cue(msg)
+        assert "misunderstanding" in cue.lower()
+
 
 class TestDeRobotificationAndSanitization:
     """QA tests ensuring robotic phrases and script leaks are stripped."""
@@ -158,6 +191,30 @@ class TestDeRobotificationAndSanitization:
         assert "later try cheyyam" not in cleaned.lower()
         assert not cleaned.lower().startswith("athu sheriyanu")
 
+    def test_strip_athu_mind_illa(self):
+        robotic_reply = "Athu mind illa, kayy illa, enna? 😅"
+        cleaned = de_robotify_reply(robotic_reply, "Kayyiin poi irikkua enn kopp")
+        assert "athu mind illa" not in cleaned.lower()
+        assert "kayy illa" not in cleaned.lower()
+
+    def test_strip_coffee_advice_on_distress(self):
+        distress_reply = "Athu sheriyilla, onnum kurachu chill aayi coffee kudichal mathi! ☕️"
+        cleaned = de_robotify_reply(distress_reply, "Mothathil kayyinn poyapole")
+        assert "coffee kudichal mathi" not in cleaned.lower()
+        assert "njan undo koode" in cleaned.lower()
+
+    def test_strip_laughing_emojis_on_distress(self):
+        laugh_in_crisis = "Ayy entha pattiye? 😂 kurachu maathram! 😅"
+        cleaned = de_robotify_reply(laugh_in_crisis, "Maduthu")
+        assert "😂" not in cleaned
+        assert "😅" not in cleaned
+
+    def test_safe_non_empty_fallback(self):
+        # Even if input is completely wiped or blank, never return empty
+        cleaned = de_robotify_reply("", "test")
+        assert cleaned != ""
+        assert len(cleaned) > 3
+
 
 class TestRAGPipelineCleanliness:
     """QA tests ensuring RAG doesn't leak developer docs or pollute casual chat."""
@@ -212,6 +269,9 @@ class TestMemoryAndEmotionTracking:
         assert detect_emotion("Super happy today") == "happy"
         assert detect_emotion("Kore deshyam varunnu") == "angry"
         assert detect_emotion("Just doing some projects") == "neutral"
+        assert detect_emotion("Maduthu") == "sad"
+        assert detect_emotion("Mothathil kayyinn poyapole") == "sad"
+        assert detect_emotion("Totally down") == "sad"
 
     def test_fact_extraction(self):
         fact = maybe_extract_user_fact("I work as a software engineer")
