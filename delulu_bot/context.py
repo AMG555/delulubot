@@ -117,8 +117,14 @@ def detect_conversation_cue(text: str) -> str:
         return "User reacted with confusion. Match energy with quick teasing ('Enthonnu eeh?')."
     if any(p in t for p in ("athenna", "athentha", "athe entha")):
         return "User is asking 'Why is that? / Why not?'. Give a direct casual human reason, never say 'Athu sheriyanu, later try cheyyam'."
-    if any(p in t for p in ("beshtt", "besht", "best-tt")) or t in ("best", "beshtt", "besht"):
-        return "User is being sarcastic ('Beshtt' / 'Oh great... 😒'). Do NOT take this as praise! Reply with spontaneous wry banter ('Pinne!', 'Enthonnu best 😒', 'Ninakku parayan eluppamaa 😂', 'Jaada aano?'). Do NOT repeat the exact same reply every time."
+    if any(p in t for p in ("paranja karyam", "paranja karya", "nerathe paranja", "kurach naal munne", "kurachu naal munne", "enthayi njn paranja", "karyam enthayi")):
+        return "User is asking about something they told you earlier ('paranja karyam' / 'nerathe paranja' / past topic). NEVER assume this refers to recent trivial greetings like 'ivide thanne undu'! Check past conversation topics and user facts (e.g. app, startup, project, work). If you recall it, refer to it naturally ('Aa hostel app-inte karyam aano?'). If unsure, ask casually which topic they meant without pretending you didn't hear."
+    if any(p in t for p in ("proper memory", "memory illa", "ormayille", "ormayundo", "marannu poyo", "maranno", "ormilla")):
+        return "User is asking if you remember or complaining about your memory ('nink ormayille', 'proper memory illa'). NEVER say 'mind illaallo' (that is broken Manglish)! NEVER blame the user ('clear aayi para'). Own it casually with friend humility: 'Ayy sorry da, slip aayi poyi! Entha karyam onnude para, njan kelkkam'. DO NOT act dismissive ('enna venam?')."
+    if any(p in t for p in ("ith thanneya preshnm", "ith thanne preshnm", "ith thanneya problem", "ath thanneya preshnm")):
+        return "User is frustrated that you made the same memory or comprehension mistake ('Ith thanneya preshnm'). DO NOT say 'Adu, same problem aayirikkunnu? Enna venam?' or act like a robot! Apologize warmly: 'Sorry da, njan chumma alamb aakki. Entha karyam para, njan set aakkam'."
+    if any(p in t for p in ("beshtt", "besht", "best-tt")) or t in ("best", "beshtt", "besht", "bst"):
+        return "User is being sarcastic ('Beshtt' / 'Bst' / 'Oh great... 😒'). Do NOT take this as praise! Reply with spontaneous wry banter ('Pinne!', 'Enthonnu best 😒', 'Ninakku parayan eluppamaa 😂', 'Jaada aano?'). Do NOT repeat the exact same reply every time."
     laugh_tokens = {"hehe", "haha", "hahaha", "hehehe", "lol", "lmao", "rofl", "kikiki", "chiri", "hehe 😂", "haha 😂"}
     if t in laugh_tokens or any(p in t for p in ("hehe", "haha", "hahaha")) or any(c in t for c in "😂🤣😆😹"):
         return "User is chuckling or laughing ('hehe' / 'haha'). NEVER reply with 'Athu sheriyanu', 'Sheri', or blind agreement! Tease them about laughing ('Chirichu theernno? 😂', 'Enthaada itra chiri?', 'Vattaano ninakku', 'Enthonnu chiri 😒') or drop a dry reaction."
@@ -155,7 +161,10 @@ def build_foundation_rag_context() -> str:
 
 
 def build_personal_context(memory: dict[str, Any], message: str) -> str:
-    facts = memory.get("user_facts", [])
+    facts = list(memory.get("user_facts", []))
+    for f in memory.get("facts", []):
+        if f not in facts:
+            facts.append(f)
     if not facts:
         return ""
     from .config import PERSONAL_FACTS_TOP_K

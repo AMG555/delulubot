@@ -54,7 +54,15 @@ def get_user_memory(user_id: str) -> dict[str, Any]:
             "voice_lang": "auto",
             "emoji_level": "default",
         }
-    return user_memories[user_id]
+    mem = user_memories[user_id]
+    # Normalize legacy "facts" field into "user_facts"
+    if "user_facts" not in mem:
+        mem["user_facts"] = list(mem.get("facts", []))
+    else:
+        for f in mem.get("facts", []):
+            if f not in mem["user_facts"]:
+                mem["user_facts"].append(f)
+    return mem
 
 
 def update_memory(user_id: str, user_message: str, bot_reply: str) -> None:
@@ -77,6 +85,10 @@ def maybe_extract_user_fact(message: str) -> str | None:
         r"(?:i\s+(?:work|study|live|stay)\s+(?:at|in|as)\s+(.{2,50}))",
         r"(?:my\s+(?:name|job|work|school|college|place|hometown|dream|goal)\s+(?:is|:)\s+(.{2,50}))",
         r"(?:ente\s+(?:joli|place|school|college|dream|goal)\s+(.{2,50}))",
+        r"(?:ente\s+(?:oru\s+)?(?:saas|product|app|project|startup|business|company|idea)\s+(.{3,80}))",
+        r"(?:(?:saas|product|app|project|startup)\s+(?:ond|und|build|develop|sales|marketing)\s+(.{3,80}))",
+        r"(?:(?:hostel|owners|students|clients)\s+(?:vendi|kk vendi)\s+(.{3,80}))",
+        r"(?:(?:working|building|developing|doing)\s+(?:on\s+)?(.{3,60}))",
         r"(?:njan\s+(.{3,60}))",
     ]
     for pat in patterns:
@@ -133,16 +145,72 @@ def extract_name(message: str, current_name: str | None) -> str | None:
     return None
 
 
+PAST_INQUIRY_KEYWORDS = (
+    "nerathe", "paranja karyam", "paranja karya", "paranjill", "paranjath",
+    "ormayundo", "ormayille", "ormilla", "ormayilla", "remember",
+    "kurach naal munne", "kurachu naal munne", "maranno", "marannu",
+    "last time", "enthayi", "karyam enthayi", "karyam enthaayi",
+    "karyam orth", "karyam orma", "karyam ormayundo"
+)
+
+
+def is_user_asking_about_past(user_message: str) -> bool:
+    if not user_message:
+        return False
+    u = user_message.lower()
+    return any(k in u for k in PAST_INQUIRY_KEYWORDS)
+
+
 def strip_unsolicited_past_talk(text: str, user_message: str) -> str:
+    # If the user specifically asked or referenced past conversation, DO NOT strip past references!
+    if is_user_asking_about_past(user_message):
+        return text
     lines = text.split("\n")
     kept: list[str] = []
     for line in lines:
         lower = line.lower().strip()
         if any(p in lower for p in ["remember when you said", "earlier you mentioned"]):
-            if user_message and user_message.lower() not in lower:
-                continue
+            continue
         kept.append(line)
     return "\n".join(kept)
+
+
+TRIVIAL_UTTERANCES = {
+    "hi", "hello", "hey", "okok", "ok", "ivide thanne unde", "ivide thanne und",
+    "sheri", "ahm sheri", "bye", "bst", "best", "eeh", "ennitt", "aysheri",
+    "onnum illa", "onnum vendaye", "chill aayi irikk", "sheriyeda",
+}
+
+
+def retrieve_substantive_history(memory: dict[str, Any], query: str, max_items: int = 5) -> str:
+    """Find substantive past statements from history so the bot can recall what was discussed."""
+    history = memory.get("conversation_history", [])
+    if not history:
+        return ""
+
+    # Look through history (excluding the immediate last 2 turns which are already current)
+    candidate_turns = history[:-2] if len(history) > 2 else history
+    substantive: list[str] = []
+
+    for msg in reversed(candidate_turns):
+        content = msg.get("content", "").strip()
+        role = msg.get("role", "user")
+        if len(content) < 18:
+            continue
+        if content.lower() in TRIVIAL_UTTERANCES:
+            continue
+        # Avoid duplicates
+        prefix = "User previously said" if role == "user" else "Delulu previously replied"
+        entry = f'- {prefix}: "{content}"'
+        if entry not in substantive:
+            substantive.append(entry)
+        if len(substantive) >= max_items:
+            break
+
+    if not substantive:
+        return ""
+
+    return "\n".join(reversed(substantive))
 
 
 load_memories()

@@ -67,6 +67,7 @@ from .memory import (
     clear_user_history,
     get_user_memory,
     maybe_extract_user_fact,
+    retrieve_substantive_history,
     save_memories,
     update_memory,
     update_user_vibe,
@@ -179,6 +180,14 @@ def de_robotify_reply(reply: str, user_message: str) -> str:
     if any(w in u_lower for w in ("manasilav", "manassilav", "prayojanom", "prayojanam", "human allallo")):
         if any(w in text.lower() for w in ("real friend aane", "robot alla", "mind illa", "thinnakkam")):
             text = "Sorry da, njan chumma alamb aakki. Enikku manasilavunnu nee nalla tensionil aanennu. Para, njan full kelkkan ready aanu."
+    # Sanitize broken "mind illaallo" memory excuse and victim-blaming
+    text = re.sub(r"(?i)\bsorry da,?\s*mind\s*illaallo[^\.\!\?]*[\.\!\?]?", "Ayy sorry da, slip aayi poyi! Entha karyam onnude para.", text).strip()
+    text = re.sub(r"(?i)\bmind\s*illaallo\b", "slip aayatha", text).strip()
+    text = re.sub(r"(?i)\bnext time kurachu clear aayi para[^\.\!\?]*[\.\!\?]?", "", text).strip()
+    text = re.sub(r"(?i)\b(adu|athu),?\s*same problem aayirikkunnu\??\s*enna venam\??", "Sorry da, njan alamb aakki. Entha karyam para, njan set aakkam.", text).strip()
+    text = re.sub(r"(?i)\benna venam\??\s*[🙂\.]*", "Entha karyam para, njan kelkkatte.", text).strip()
+    if any(k in u_lower for k in ("paranja karyam", "paranja karya", "nerathe paranja")):
+        text = re.sub(r'(?i)nee paranjathu\s*["“\']ivide thanne und[e]?[u]?["”\'][^\.\!\?]*[\.\!\?]?', "Nee nerathe paranja aa karyam aano? Atho vere enthelum? Onnude para.", text).strip()
     # Remove customer-support style platitudes
     support_phrases = [
         r"whenever you feel like[^\.\!\?]*[\.\!\?]?",
@@ -378,18 +387,21 @@ async def get_delulu_response(user_id: str, user_message: str) -> str:
         f"Language style: {LANG_STYLES.get(user_lang_style, LANG_STYLES['manglish'])}\n"
         "Vary your response length naturally — sometimes one word, sometimes a few sentences. "
         "React emotionally first. "
-        "Don't bring up past memories unless user asks. "
+        "Don't bring up past memories unprompted in casual greetings, but when user asks or refers to past topics ('paranja karyam', 'nerathe', 'ormayundo'), reference them naturally. "
         "No assistant tone. No headings/labels.\n"
     )
     if cue_ctx:
         dynamic_instruction += f"\nCRITICAL SOCIAL CUE FOR THIS MESSAGE:\n{cue_ctx}\n\n"
     if personal_context:
         dynamic_instruction += f"Known user facts:\n{personal_context}\n\n"
+    past_topics = retrieve_substantive_history(memory, user_message)
+    if past_topics:
+        dynamic_instruction += f"PAST CONVERSATION TOPICS & RECALL:\n{past_topics}\n(Use this when user asks about 'paranja karyam' or refers to past things discussed)\n\n"
     if vibe_context:
         dynamic_instruction += f"User vibe profile:\n{vibe_context}\n\n"
 
     openai_messages = []
-    recent = memory["conversation_history"][-12:]
+    recent = memory["conversation_history"][-20:]
     for msg in recent:
         openai_messages.append({"role": msg["role"], "content": msg["content"]})
     openai_messages.append({"role": "user", "content": user_message})

@@ -17,7 +17,10 @@ from delulu_bot.handlers import (
 from delulu_bot.memory import (
     add_user_fact,
     get_user_memory,
+    is_user_asking_about_past,
     maybe_extract_user_fact,
+    retrieve_substantive_history,
+    strip_unsolicited_past_talk,
     update_user_vibe,
 )
 from delulu_bot.rag import _load_rag_documents
@@ -120,6 +123,28 @@ class TestManglishColloquialComprehension:
         cue = detect_conversation_cue(msg)
         assert "misunderstanding" in cue.lower()
 
+    def test_paranja_karyam_cue(self):
+        msg = "Enthayi njn paranja karyam?"
+        cue = detect_conversation_cue(msg)
+        assert "past topic" in cue.lower() or "told you earlier" in cue.lower()
+        assert "never assume" in cue.lower()
+
+    def test_proper_memory_complaint_cue(self):
+        msg = "You dont have any proper memory"
+        cue = detect_conversation_cue(msg)
+        assert "proper memory" in cue.lower()
+        assert "mind illaallo" in cue.lower()
+
+    def test_ith_thanneya_preshnm_cue(self):
+        msg = "Ith thanneya preshnm"
+        cue = detect_conversation_cue(msg)
+        assert "same memory" in cue.lower() or "same mistake" in cue.lower()
+
+    def test_bst_abbreviation_cue(self):
+        msg = "Bst"
+        cue = detect_conversation_cue(msg)
+        assert "sarcastic" in cue.lower()
+
 
 class TestDeRobotificationAndSanitization:
     """QA tests ensuring robotic phrases and script leaks are stripped."""
@@ -215,6 +240,31 @@ class TestDeRobotificationAndSanitization:
         assert cleaned != ""
         assert len(cleaned) > 3
 
+    def test_strip_mind_illaallo_hallucination(self):
+        reply = "Sorry da, mind illaallo! 😅 Ennitt, next time kurachu clear aayi para."
+        cleaned = de_robotify_reply(reply, "You dont have any proper memory😒")
+        assert "mind illaallo" not in cleaned.lower()
+        assert "next time kurachu clear aayi para" not in cleaned.lower()
+        assert "slip aayi poyi" in cleaned.lower()
+
+    def test_strip_same_problem_robot_dismissal(self):
+        reply = "Adu, same problem aayirikkunnu? Enna venam? 🙂"
+        cleaned = de_robotify_reply(reply, "Ith thanneya preshnm")
+        assert "same problem aayirikkunnu" not in cleaned.lower()
+        assert "enna venam" not in cleaned.lower()
+
+    def test_strip_presence_greeting_repetition_as_karyam(self):
+        reply = 'Nee paranjathu “Ivide thanne unde” 🙂.'
+        cleaned = de_robotify_reply(reply, "Enthayi njn paranja karyam?")
+        assert 'ivide thanne unde' not in cleaned.lower()
+
+    def test_strip_unsolicited_past_talk_preserves_solicited_history(self):
+        user_msg = "I mean njn nerathe paranja karya ille kurach naal munne"
+        bot_reply = "Earlier you mentioned you were building a mobile app for hostel owners in Kerala."
+        cleaned = strip_unsolicited_past_talk(bot_reply, user_msg)
+        assert "earlier you mentioned" in cleaned.lower()
+        assert "hostel owners" in cleaned.lower()
+
 
 class TestRAGPipelineCleanliness:
     """QA tests ensuring RAG doesn't leak developer docs or pollute casual chat."""
@@ -287,3 +337,23 @@ class TestMemoryAndEmotionTracking:
         update_user_vibe(mem, "short msg")
         assert "avg_message_length" in mem
         assert mem["avg_message_length"] > 0
+
+    def test_project_and_saas_fact_extraction(self):
+        fact = maybe_extract_user_fact("ente oru saas product ond athil sales kond varanam")
+        assert fact is not None
+        assert "sales kond varanam" in fact.lower()
+
+    def test_substantive_history_retrieval(self):
+        mem = {
+            "conversation_history": [
+                {"role": "user", "content": "Hi"},
+                {"role": "assistant", "content": "Hi! Evide poyi?"},
+                {"role": "user", "content": "Alla ith kerala aa ivdatge hostel ownersokke ippalum digital aayttilla so avrkk vendi oru mobile app aa"},
+                {"role": "assistant", "content": "Hostel owners-ine convince cheyyanam, that is the tough part"},
+                {"role": "user", "content": "Ivide thanne unde"},
+                {"role": "assistant", "content": "Sheri, evide busy aayi?"},
+            ]
+        }
+        retrieved = retrieve_substantive_history(mem, "Enthayi njn paranja karyam?")
+        assert "hostel owners" in retrieved.lower()
+        assert "ivide thanne unde" not in retrieved.lower()
