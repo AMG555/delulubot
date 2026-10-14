@@ -5,6 +5,7 @@ from PIL import Image
 from delulu_bot import config
 from delulu_bot.context import (
     build_foundation_rag_context,
+    build_personal_context,
     build_rag_context,
     detect_conversation_cue,
     detect_emotion,
@@ -21,6 +22,7 @@ from delulu_bot.memory import (
     maybe_extract_user_fact,
     retrieve_substantive_history,
     strip_unsolicited_past_talk,
+    update_user_topics_and_facts,
     update_user_vibe,
 )
 from delulu_bot.rag import _load_rag_documents
@@ -265,6 +267,32 @@ class TestDeRobotificationAndSanitization:
         assert "earlier you mentioned" in cleaned.lower()
         assert "hostel owners" in cleaned.lower()
 
+    def test_strip_mone_and_makale_vocatives(self):
+        reply = "Entha mone ninte problem? Enta mone, enthokkeya parayunne? Makale chill aavu."
+        cleaned = de_robotify_reply(reply, "test")
+        assert "mone" not in cleaned.lower()
+        assert "makale" not in cleaned.lower()
+        assert "eda" in cleaned.lower()
+
+    def test_strip_tamil_koncham_words(self):
+        reply = "Koncham basic ariyum, athu koncham complex aanu."
+        cleaned = de_robotify_reply(reply, "test")
+        assert "koncham" not in cleaned.lower()
+        assert "kurachu" in cleaned.lower()
+
+    def test_limit_question_stacking(self):
+        reply = "Okok? Enthokkeya vishesham? Ninte plans entha? Pwoli aanu ennano? 😄"
+        cleaned = de_robotify_reply(reply, "Okok")
+        assert cleaned.count("?") <= 1
+        assert "enthokkeya vishesham" in cleaned.lower()
+
+    def test_strip_bestie_cringe_and_compliance(self):
+        reply = "Oru paadu! Njan ingane artificial aaytt samsarikkunno? 🥺 Njan ninte bestie aanu, entha doubt? 😜 Ninte ishtam pole samsarikkan njan try cheyyunnundallo."
+        cleaned = de_robotify_reply(reply, "Ni entha ingane artificial aaytt samsarikkunne")
+        assert "bestie aanu" not in cleaned.lower()
+        assert "try cheyyunnundallo" not in cleaned.lower()
+        assert "🥺" not in cleaned
+
 
 class TestRAGPipelineCleanliness:
     """QA tests ensuring RAG doesn't leak developer docs or pollute casual chat."""
@@ -357,3 +385,44 @@ class TestMemoryAndEmotionTracking:
         retrieved = retrieve_substantive_history(mem, "Enthayi njn paranja karyam?")
         assert "hostel owners" in retrieved.lower()
         assert "ivide thanne unde" not in retrieved.lower()
+
+    def test_ishtam_does_not_trigger_romantic_love(self):
+        msg = "Aaa nink ishtam ulla enthe engilum patti para kekkatte"
+        assert detect_emotion(msg) == "neutral"
+
+    def test_valare_and_valiya_do_not_trigger_false_emotions(self):
+        assert detect_emotion("Valare busy aanu") == "neutral"
+        assert detect_emotion("Valiya project aanu") == "neutral"
+
+    def test_update_user_topics_hostel_saas_and_trading(self):
+        mem = {"user_facts": [], "active_topics": {}}
+        update_user_topics_and_facts(
+            mem,
+            "Alla ith kerala aa ivdatge hostel ownersokke ippalum digital aayttilla so avrkk vendi oru mobile app aa. Avr parayunnath over priced aanenna"
+        )
+        assert "hostel_app" in mem["active_topics"]
+        assert "hostel owners" in mem["active_topics"]["hostel_app"].lower()
+        assert any("hostel" in f.lower() for f in mem["user_facts"])
+
+        update_user_topics_and_facts(mem, "Scalping cheytha kollaam ennund help cheyyo, chart analysis ariyavo")
+        assert "trading" in mem["active_topics"]
+        assert "scalping" in mem["active_topics"]["trading"].lower()
+
+    def test_junk_fact_exclusion(self):
+        mem = {"user_facts": [], "active_topics": {}}
+        update_user_topics_and_facts(mem, "Story para ninte")
+        update_user_topics_and_facts(mem, "Njan oru coffee kudikkuva")
+        update_user_topics_and_facts(mem, "Ni entha ingane artificial aaytt samsarikkunne")
+        assert len(mem["user_facts"]) == 0
+        assert len(mem["active_topics"]) == 0
+
+    def test_build_personal_context_active_topics(self):
+        mem = {
+            "user_facts": ["Interested in trading"],
+            "active_topics": {"hostel_app": "Building SaaS mobile app for hostel owners"}
+        }
+        ctx = build_personal_context(mem, "Hi")
+        assert "ACTIVE USER TOPICS" in ctx
+        assert "hostel owners" in ctx.lower()
+        assert "KNOWN USER FACTS" in ctx
+        assert "trading" in ctx.lower()
