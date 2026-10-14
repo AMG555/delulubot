@@ -14,6 +14,13 @@ user_memories: dict[str, Any] = {}
 
 def load_memories() -> dict[str, Any]:
     global user_memories
+    tmp_file = f"{MEMORY_FILE}.tmp"
+    if not os.path.exists(MEMORY_FILE) and os.path.exists(tmp_file):
+        try:
+            os.replace(tmp_file, MEMORY_FILE)
+        except Exception:
+            pass
+
     if not os.path.exists(MEMORY_FILE):
         user_memories = {}
         return user_memories
@@ -26,14 +33,26 @@ def load_memories() -> dict[str, Any]:
             user_memories = {}
     except Exception as e:
         logger.warning(f"Failed to load memories: {e}")
+        if os.path.exists(tmp_file):
+            try:
+                with open(tmp_file, "r", encoding="utf-8") as tf:
+                    data = json.load(tf)
+                if isinstance(data, dict):
+                    user_memories = data
+                    logger.info("Recovered memories from .tmp backup")
+                    return user_memories
+            except Exception:
+                pass
         user_memories = {}
     return user_memories
 
 
 def save_memories(memories: dict[str, Any]) -> None:
     try:
-        with open(MEMORY_FILE, "w", encoding="utf-8") as f:
+        tmp_file = f"{MEMORY_FILE}.tmp"
+        with open(tmp_file, "w", encoding="utf-8") as f:
             json.dump(memories, f, indent=2, ensure_ascii=False)
+        os.replace(tmp_file, MEMORY_FILE)
     except Exception as e:
         logger.error(f"Failed to save memories: {e}")
 

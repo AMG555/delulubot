@@ -19,8 +19,10 @@ from delulu_bot.memory import (
     add_user_fact,
     get_user_memory,
     is_user_asking_about_past,
+    load_memories,
     maybe_extract_user_fact,
     retrieve_substantive_history,
+    save_memories,
     strip_unsolicited_past_talk,
     update_user_topics_and_facts,
     update_user_vibe,
@@ -426,3 +428,51 @@ class TestMemoryAndEmotionTracking:
         assert "hostel owners" in ctx.lower()
         assert "KNOWN USER FACTS" in ctx
         assert "trading" in ctx.lower()
+
+    def test_atomic_memory_persistence(self, tmp_path, monkeypatch):
+        test_file = str(tmp_path / "test_user_memories.json")
+        monkeypatch.setattr("delulu_bot.memory.MEMORY_FILE", test_file)
+        data = {"user_1": {"name": "TestUser", "user_facts": ["Coding in Python"]}}
+        save_memories(data)
+        loaded = load_memories()
+        assert "user_1" in loaded
+        assert loaded["user_1"]["name"] == "TestUser"
+
+    def test_vision_caption_topic_extraction(self):
+        mem = {"user_facts": [], "active_topics": {}}
+        update_user_topics_and_facts(mem, "ente hostel mobile app screenshot nokku")
+        assert "hostel_app" in mem["active_topics"]
+
+    def test_gemini_contents_alternation_safety(self):
+        recent = [
+            {"role": "assistant", "content": "Intro"},
+            {"role": "user", "content": "First msg"},
+            {"role": "user", "content": "Second msg"},
+            {"role": "assistant", "content": "Reply"},
+        ]
+        user_message = "Current text"
+        contents = []
+        for msg in recent:
+            role = "user" if msg["role"] == "user" else "model"
+            text_part = (msg.get("content") or "").strip()
+            if not text_part:
+                continue
+            if not contents:
+                if role == "model":
+                    continue
+                contents.append({"role": role, "parts": [text_part]})
+            else:
+                if contents[-1]["role"] == role:
+                    contents[-1]["parts"][0] += f"\n{text_part}"
+                else:
+                    contents.append({"role": role, "parts": [text_part]})
+        if contents and contents[-1]["role"] == "user":
+            contents[-1]["parts"][0] += f"\n{user_message}"
+        else:
+            contents.append({"role": "user", "parts": [user_message]})
+
+        assert len(contents) > 0
+        assert contents[0]["role"] == "user"
+        for i in range(len(contents) - 1):
+            assert contents[i]["role"] != contents[i + 1]["role"]
+        assert contents[-1]["role"] == "user"

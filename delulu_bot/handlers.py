@@ -465,8 +465,22 @@ async def get_delulu_response(user_id: str, user_message: str) -> str:
         contents = []
         for msg in recent:
             role = "user" if msg["role"] == "user" else "model"
-            contents.append({"role": role, "parts": [msg["content"]]})
-        contents.append({"role": "user", "parts": [user_message]})
+            text_part = (msg.get("content") or "").strip()
+            if not text_part:
+                continue
+            if not contents:
+                if role == "model":
+                    continue
+                contents.append({"role": role, "parts": [text_part]})
+            else:
+                if contents[-1]["role"] == role:
+                    contents[-1]["parts"][0] += f"\n{text_part}"
+                else:
+                    contents.append({"role": role, "parts": [text_part]})
+        if contents and contents[-1]["role"] == "user":
+            contents[-1]["parts"][0] += f"\n{user_message}"
+        else:
+            contents.append({"role": "user", "parts": [user_message]})
 
         available_models = []
         blocked_waits = []
@@ -785,6 +799,8 @@ async def generate_delulu_vision_reply(
     if not reply:
         reply = "Ayyada, photo load aavan kurachu scene aayi. Entha athil undaayirunne? 😂"
 
+    if user_caption:
+        update_user_topics_and_facts(memory, user_caption)
     memory_label = f"[{media_type_label.capitalize()}" + (f": {user_caption}" if user_caption else "") + "]"
     update_memory(user_id, memory_label, reply)
     return reply
