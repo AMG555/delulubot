@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+import re
 from typing import Any
 
 
@@ -160,6 +161,16 @@ def build_foundation_rag_context() -> str:
     return ""
 
 
+DOMAIN_KEYWORDS: dict[str, set[str]] = {
+    "pet": {"pet", "patti", "pattiye", "dog", "puppy", "cat", "poocha", "pooche"},
+    "location": {"veedu", "veettil", "place", "hometown", "staying", "living", "evide", "sthalom", "location"},
+    "career": {"joli", "work", "job", "study", "padikk", "developer", "engineer", "designer", "student"},
+    "trading": {"trading", "trade", "scalping", "chart", "stocks", "market"},
+    "project": {"saas", "app", "mobile app", "product", "startup", "hostel"},
+    "milestone": {"interview", "exam", "trip", "travel", "kalyanam", "wedding", "bday", "birthday"},
+}
+
+
 def build_personal_context(memory: dict[str, Any], message: str) -> str:
     facts = list(memory.get("user_facts", []))
     for f in memory.get("facts", []):
@@ -175,9 +186,32 @@ def build_personal_context(memory: dict[str, Any], message: str) -> str:
 
     if facts:
         from .config import PERSONAL_FACTS_TOP_K
+        m_lower = (message or "").lower()
+        m_words = set(re.findall(r"\w+", m_lower))
+        active_domains = {
+            domain for domain, kw_set in DOMAIN_KEYWORDS.items()
+            if any(kw in m_lower for kw in kw_set)
+        }
+
+        scored_facts: list[tuple[float, str]] = []
+        for idx, fact in enumerate(facts):
+            f_lower = fact.lower()
+            f_words = set(re.findall(r"\w+", f_lower))
+            overlap = len(m_words & f_words)
+            domain_bonus = 0.0
+            for d in active_domains:
+                if any(kw in f_lower for kw in DOMAIN_KEYWORDS[d]):
+                    domain_bonus += 10.0
+
+            score = (idx / max(len(facts), 1)) + (5.0 * overlap) + domain_bonus
+            scored_facts.append((score, fact))
+
+        scored_facts.sort(key=lambda x: x[0], reverse=True)
+        chosen_facts = [f for _, f in scored_facts[:PERSONAL_FACTS_TOP_K]]
+
         if lines:
             lines.append("KNOWN USER FACTS:")
-        for fact in facts[-PERSONAL_FACTS_TOP_K:]:
+        for fact in chosen_facts:
             lines.append(f"- {fact}")
 
     return "\n".join(lines)

@@ -364,7 +364,7 @@ async def get_delulu_response(user_id: str, user_message: str) -> str:
     update_user_vibe(memory, user_message)
     emotion_ctx = build_emotion_context(emotion)
     friendship_ctx = build_friendship_context(level)
-    user_name = memory.get("name", "eda/edi")
+    user_name = memory.get("name") or "eda/edi"
     personal_context = build_personal_context(memory, user_message)
     vibe_context = build_vibe_context(memory)
     song_request = is_song_request(user_message)
@@ -429,6 +429,9 @@ async def get_delulu_response(user_id: str, user_message: str) -> str:
     past_topics = retrieve_substantive_history(memory, user_message)
     if past_topics:
         dynamic_instruction += f"PAST CONVERSATION TOPICS & RECALL:\n{past_topics}\n(Use this when user asks about 'paranja karyam' or refers to past things discussed)\n\n"
+    archived_summary = memory.get("conversation_summary", "")
+    if archived_summary:
+        dynamic_instruction += f"ARCHIVED LONG-TERM MEMORY:\n{archived_summary}\n\n"
     if vibe_context:
         dynamic_instruction += f"User vibe profile:\n{vibe_context}\n\n"
 
@@ -543,7 +546,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     memory = get_user_memory(user_id)
     voice_enabled = memory.get("voice_enabled", False)
 
-    if user.first_name:
+    if user.first_name and not memory.get("name"):
         memory["name"] = user.first_name
 
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
@@ -732,7 +735,7 @@ async def generate_delulu_vision_reply(
     """Send image and prompt to Groq vision model and return in-character Delulu reply."""
     memory = get_user_memory(user_id)
     level = memory.get("friendship_level", 0)
-    user_name = memory.get("name", "eda/edi")
+    user_name = memory.get("name") or "eda/edi"
     user_tone = memory.get("tone", "default")
     tone_instruction = TONE_STYLES.get(user_tone, TONE_STYLES["default"])
     user_lang_style = memory.get("lang_style", "manglish")
@@ -911,7 +914,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     user_id = str(user.id)
     memory = get_user_memory(user_id)
-    if user.first_name:
+    if user.first_name and not memory.get("name"):
         memory["name"] = user.first_name
     save_memories(user_memories)
     memory["fresh_start"] = True

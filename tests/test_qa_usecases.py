@@ -476,3 +476,93 @@ class TestMemoryAndEmotionTracking:
         for i in range(len(contents) - 1):
             assert contents[i]["role"] != contents[i + 1]["role"]
         assert contents[-1]["role"] == "user"
+
+    def test_rolling_conversation_summary_archiving(self):
+        from delulu_bot.memory import update_memory, get_user_memory
+        mem = get_user_memory("rolling_test_user")
+        mem["conversation_history"] = []
+        mem["conversation_summary"] = ""
+
+        # Populate with 26 exchanges (52 turns)
+        for i in range(26):
+            update_memory(
+                "rolling_test_user",
+                f"I am working on building scalable microservice module number {i}",
+                f"That sounds great, keep going with microservice module number {i}"
+            )
+        assert len(mem["conversation_history"]) == 40
+        assert mem["conversation_summary"] != ""
+        assert "microservice module number" in mem["conversation_summary"]
+
+    def test_manglish_name_patterns(self):
+        assert extract_name("Amal aanu ente peru", None) == "Amal"
+        assert extract_name("Njan Rahul aanu", None) == "Rahul"
+        assert extract_name("Njan ivide aanu", None) is None  # ivide is filtered
+        assert extract_name("Ath aanu ente peru", None) is None  # ath is filtered
+
+    def test_life_facts_and_category_dedup(self):
+        mem = {"user_facts": [], "active_topics": {}}
+        update_user_topics_and_facts(mem, "Enikku oru patti undu peru Bruno")
+        assert any("Bruno" in f for f in mem["user_facts"])
+
+        update_user_topics_and_facts(mem, "Ente veedu Thrissur aanu")
+        assert any("Thrissur" in f for f in mem["user_facts"])
+
+        # Update location to Kochi - should replace Thrissur, not duplicate
+        update_user_topics_and_facts(mem, "Ente veedu Kochi aanu")
+        loc_facts = [f for f in mem["user_facts"] if "Location/Hometown:" in f]
+        assert len(loc_facts) == 1
+        assert "Kochi" in loc_facts[0]
+
+    def test_favourite_and_birthday_fact_extraction(self):
+        mem = {"user_facts": [], "active_topics": {}}
+        update_user_topics_and_facts(mem, "Ente fav food biriyani aanu")
+        assert any("biriyani" in f.lower() for f in mem["user_facts"])
+
+        update_user_topics_and_facts(mem, "My birthday is on 15 August")
+        assert any("15 august" in f.lower() for f in mem["user_facts"])
+
+    def test_query_relevant_facts_prioritization(self):
+        mem = {
+            "user_facts": [
+                "Has a pet: dog named Bruno",
+                "Work/Study: Python developer",
+                "Location/Hometown: Kochi",
+                "Interested in stock market trading",
+                "Life event: AWS certification exam next week",
+            ],
+            "active_topics": {},
+        }
+        # Ask about pet: dog named Bruno should be prioritized into top-K even though it's oldest
+        ctx = build_personal_context(mem, "Ente pattiye ormayundo? Peru entha?")
+        assert "Bruno" in ctx
+
+        # Ask about exam: exam fact should be prioritized
+        ctx_exam = build_personal_context(mem, "Nale exam undu tension")
+        assert "exam" in ctx_exam.lower()
+
+    def test_user_id_int_and_str_interchangeability(self):
+        mem_int = get_user_memory(987654321)
+        mem_str = get_user_memory("987654321")
+        assert mem_int is mem_str
+
+        mem_int["name"] = "UnifiedUser"
+        assert get_user_memory("987654321")["name"] == "UnifiedUser"
+
+    def test_preferred_name_preservation(self):
+        mem = get_user_memory("preserve_user")
+        mem["name"] = "Appu"
+        # Simulate message handler logic: if first_name exists but memory has name, keep Appu
+        tg_first_name = "Amal George"
+        if tg_first_name and not mem.get("name"):
+            mem["name"] = tg_first_name
+        assert mem["name"] == "Appu"
+
+    def test_past_inquiry_keywords_expansion(self):
+        assert is_user_asking_about_past("Ormando enne?")
+        assert is_user_asking_about_past("Ormundo?")
+        assert is_user_asking_about_past("Maranno enne?")
+        assert is_user_asking_about_past("Ente peru entha?")
+        assert is_user_asking_about_past("Njan aara?")
+        assert is_user_asking_about_past("What is my name?")
+

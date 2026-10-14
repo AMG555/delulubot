@@ -57,11 +57,13 @@ def save_memories(memories: dict[str, Any]) -> None:
         logger.error(f"Failed to save memories: {e}")
 
 
-def get_user_memory(user_id: str) -> dict[str, Any]:
-    if user_id not in user_memories:
-        user_memories[user_id] = {
+def get_user_memory(user_id: str | int) -> dict[str, Any]:
+    uid = str(user_id)
+    if uid not in user_memories:
+        user_memories[uid] = {
             "name": None,
             "conversation_history": [],
+            "conversation_summary": "",
             "total_messages": 0,
             "friendship_level": 1,
             "mood_history": [],
@@ -74,7 +76,9 @@ def get_user_memory(user_id: str) -> dict[str, Any]:
             "voice_lang": "auto",
             "emoji_level": "default",
         }
-    mem = user_memories[user_id]
+    mem = user_memories[uid]
+    if "conversation_summary" not in mem:
+        mem["conversation_summary"] = ""
     if "active_topics" not in mem:
         mem["active_topics"] = {}
     # Normalize legacy "facts" field into "user_facts"
@@ -92,12 +96,41 @@ def get_user_memory(user_id: str) -> dict[str, Any]:
     return mem
 
 
-def update_memory(user_id: str, user_message: str, bot_reply: str) -> None:
-    memory = get_user_memory(user_id)
+def _archive_into_summary(memory: dict[str, Any], discarded: list[dict[str, str]]) -> None:
+    current_summary = memory.get("conversation_summary", "")
+    existing_lines = [l.strip("- ") for l in current_summary.split("\n") if l.strip("- ")]
+    new_substantive = []
+
+    for msg in discarded:
+        content = msg.get("content", "").strip()
+        role = msg.get("role", "user")
+        if len(content) < 20:
+            continue
+        c_lower = content.lower()
+        if c_lower in TRIVIAL_UTTERANCES:
+            continue
+        if any(j in c_lower for j in JUNK_FACT_FRAGMENTS):
+            continue
+        prefix = "User" if role == "user" else "Delulu"
+        entry = f"{prefix}: {content}"
+        if not any(SequenceMatcher(None, entry.lower(), e.lower()).ratio() > 0.8 for e in existing_lines):
+            new_substantive.append(entry)
+
+    all_lines = existing_lines + new_substantive
+    if len(all_lines) > 15:
+        all_lines = all_lines[-15:]
+    memory["conversation_summary"] = "\n".join(f"- {l}" for l in all_lines)
+
+
+def update_memory(user_id: str | int, user_message: str, bot_reply: str) -> None:
+    uid = str(user_id)
+    memory = get_user_memory(uid)
     memory["conversation_history"].append({"role": "user", "content": user_message})
     memory["conversation_history"].append({"role": "assistant", "content": bot_reply})
     if len(memory["conversation_history"]) > 50:
-        memory["conversation_history"] = memory["conversation_history"][-50:]
+        discarded = memory["conversation_history"][:-40]
+        memory["conversation_history"] = memory["conversation_history"][-40:]
+        _archive_into_summary(memory, discarded)
     memory["total_messages"] = memory.get("total_messages", 0) + 1
     if memory["total_messages"] % 5 == 0:
         memory["friendship_level"] = min(100, memory.get("friendship_level", 1) + 1)
@@ -127,6 +160,10 @@ def maybe_extract_user_fact(message: str) -> str | None:
         r"(?:(?:saas|product|app|project|startup)\s+(?:ond|und|build|develop|sales|marketing)\s+(.{3,80}))",
         r"(?:(?:hostel|owners|students|clients)\s+(?:vendi|kk vendi)\s+(.{3,80}))",
         r"(?:(?:working|building|developing|doing)\s+(?:on\s+)?(.{3,60}))",
+        r"(?:(?:favourite|fav)\s+(?:food|movie|cinema|actor|actress|song|pattu|color|colour|game)\s+(?:is|:)\s+(.{2,40}))",
+        r"(?:(?:ente\s+)?(?:fav|favourite)\s+(?:food|cinema|movie|actor|actress|pattu|color)\s+(.{2,40}))",
+        r"(?:(?:birthday|bday)\s+(?:is\s+on|aanu|on)\s+([a-zA-Z0-9\s]+))",
+        r"(?:ente\s+bday\s+([a-zA-Z0-9\s]+))",
         r"(?:njan\s+(.{3,60}))",
     ]
     for pat in patterns:
@@ -161,7 +198,30 @@ def update_user_topics_and_facts(memory: dict[str, Any], message: str) -> None:
         memory["active_topics"]["trading"] = "Interested in stock market trading, technical chart analysis, and scalping"
         add_user_fact(memory, "Interested in stock market trading, chart analysis, and scalping")
 
-    # 4. Standard fact extraction
+    # 4. Pets (dog/cat)
+    if any(w in lower for w in ("dog", "cat", "puppy", "kitten", "patti", "poocha")) and any(w in lower for w in ("peru", "name", "vangi", "valarth", "pet", "undu", "und")):
+        add_user_fact(memory, f"Has a pet: {message.strip()[:60]}")
+
+    # 5. Career & Studies
+    if any(w in lower for w in ("engineer", "developer", "designer", "student", "wfh", "freelance")) and any(w in lower for w in ("work", "joli", "doing", "study", "njan", "ente")):
+        add_user_fact(memory, f"Work/Study: {message.strip()[:60]}")
+
+    # 6. Location / Hometown
+    loc_match = re.search(r"(?:veedu|veettil|place|hometown)\s+([a-zA-Z]+)(?:\s+(?:aanu|il|l|at|in)|\b)", lower)
+    if not loc_match:
+        loc_match = re.search(r"(?:stay|staying|living|from)\s+(?:at|in)\s+([a-zA-Z]+)", lower)
+    if not loc_match:
+        loc_match = re.search(r"(?:veedu|place|hometown)\s+(?:at|in|aanu)\s+([a-zA-Z]+)", lower)
+    if loc_match:
+        place = loc_match.group(1).capitalize()
+        if place.lower() not in ("ivide", "hostel", "room", "veedu", "njan", "ente"):
+            add_user_fact(memory, f"Location/Hometown: {place}")
+
+    # 7. Life Events / Milestones (interview, exam, travel, wedding)
+    if any(w in lower for w in ("interview", "exam", "kalyanam", "wedding", "trip", "travel")) and any(w in lower for w in ("nale", "innale", "next week", "month", "und", "aane", "aanu")):
+        add_user_fact(memory, f"Life event: {message.strip()[:70]}")
+
+    # 8. Standard fact extraction
     fact = maybe_extract_user_fact(message)
     if fact:
         add_user_fact(memory, fact)
@@ -171,18 +231,25 @@ def add_user_fact(memory: dict[str, Any], fact: str) -> None:
     if any(j in fact.lower() for j in JUNK_FACT_FRAGMENTS):
         return
     facts = memory.get("user_facts", [])
-    for existing in facts:
-        if SequenceMatcher(None, fact.lower(), existing.lower()).ratio() > 0.8:
-            return
+    cat_prefixes = ("Location/Hometown:", "Work/Study:", "Has a pet:", "Life event:")
+    matching_cat = next((p for p in cat_prefixes if fact.startswith(p)), None)
+    if matching_cat:
+        facts = [f for f in facts if not f.startswith(matching_cat)]
+    else:
+        for existing in facts:
+            if SequenceMatcher(None, fact.lower(), existing.lower()).ratio() > 0.8:
+                return
     facts.append(fact)
     if len(facts) > PERSONAL_FACTS_LIMIT:
         facts.pop(0)
     memory["user_facts"] = facts
 
 
-def clear_user_history(user_id: str) -> None:
-    memory = get_user_memory(user_id)
+def clear_user_history(user_id: str | int) -> None:
+    uid = str(user_id)
+    memory = get_user_memory(uid)
     memory["conversation_history"] = []
+    memory["conversation_summary"] = ""
     memory["total_messages"] = 0
     memory["friendship_level"] = 1
     memory["mood_history"] = []
@@ -197,7 +264,21 @@ def update_user_vibe(memory: dict[str, Any], message: str) -> None:
 
 
 def extract_name(message: str, current_name: str | None) -> str | None:
-    msg_lower = message.lower()
+    msg_lower = message.lower().strip()
+    # Check "<name> aanu ente peru"
+    m = re.search(r"\b([a-zA-Z]{2,20})\s+(?:enn\s+)?aanu\s+ente\s+peru\b", msg_lower)
+    if m:
+        name = m.group(1).capitalize()
+        if name.lower() not in ("ath", "athu", "ith", "ithu"):
+            return name
+
+    # Check "njan <name> aanu"
+    m = re.search(r"\bnjan\s+([a-zA-Z]{2,20})\s+aanu\b", msg_lower)
+    if m:
+        name = m.group(1).capitalize()
+        if name.lower() not in ("ivide", "busy", "free", "ready", "chumma", "nalla"):
+            return name
+
     indicators = [
         "my name is ", "i'm ", "i am ",
         "call me ", "ente peru ", "enne vilikku ",
@@ -219,7 +300,12 @@ PAST_INQUIRY_KEYWORDS = (
     "ormayundo", "ormayille", "ormilla", "ormayilla", "remember",
     "kurach naal munne", "kurachu naal munne", "maranno", "marannu",
     "last time", "enthayi", "karyam enthayi", "karyam enthaayi",
-    "karyam orth", "karyam orma", "karyam ormayundo"
+    "karyam orth", "karyam orma", "karyam ormayundo",
+    "ormando", "ormundo", "maranno enne", "maranno njan",
+    "ente peru entha", "ente peru ariyamo", "ente peru parayamo", "ente peru ormayundo",
+    "njan aara", "njan aaranu", "who am i", "what is my name", "whats my name",
+    "njan entha paranje", "njan paranjath", "nammal entha samsariche",
+    "karyam ormayille", "recall", "do you remember", "can you recall"
 )
 
 
@@ -257,6 +343,13 @@ def retrieve_substantive_history(memory: dict[str, Any], query: str, max_items: 
     active_topics = memory.get("active_topics", {})
     for _, desc in active_topics.items():
         lines.append(f"- [Active ongoing topic]: {desc}")
+
+    summary_bullets = [
+        b.strip() for b in memory.get("conversation_summary", "").split("\n")
+        if b.strip()
+    ]
+    for b in summary_bullets[-3:]:
+        lines.append(f"- [Archived memory]: {b.lstrip('- ')}")
 
     history = memory.get("conversation_history", [])
     if not history and not lines:
