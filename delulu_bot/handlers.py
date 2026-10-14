@@ -70,6 +70,7 @@ from .memory import (
     retrieve_substantive_history,
     save_memories,
     update_memory,
+    update_user_topics_and_facts,
     update_user_vibe,
     user_memories,
     strip_unsolicited_past_talk,
@@ -134,9 +135,19 @@ def de_robotify_reply(reply: str, user_message: str) -> str:
     text = re.sub(r"(?i)insh[a-z]*\s*next (chat|time)[^\.\!\?]*[\.\!\?]?", "", text).strip()
     text = re.sub(r"(?i)next time kurachu nannayi try cheyyum[^\.\!\?]*[\.\!\?]?", "", text).strip()
     text = re.sub(r"(?i)sorry\s*(bro)?,?\s*athu cheyyan pattilla[^\.\!\?]*[\.\!\?]?", "Nee aara enne maatan? 😜", text).strip()
+    text = re.sub(r"(?i)oru paadu!\s*njan ingane artificial aaytt samsarikkunno\??\s*[🥺]*", "Artificial aano? Normal aayitt aanu type cheyyunne eda 😒", text).strip()
+    text = re.sub(r"(?i)njan ninte bestie aanu,?\s*entha doubt\??\s*[😜]*", "Njan normal aayitt samsarikkuva eda.", text).strip()
+    text = re.sub(r"(?i)ninte ishtam pole samsarikkan njan try cheyyunnundallo[^\.\!\?]*[\.\!\?]?", "", text).strip()
+    text = re.sub(r"(?i)\baww,?\s*", "", text).strip()
     # Replace Hindi intrusions in Manglish
     text = re.sub(r"\bthodi\b", "kurachu", text, flags=re.IGNORECASE)
     text = re.sub(r"\bthoda\b", "kurachu", text, flags=re.IGNORECASE)
+    # Replace Tamil intrusions in Manglish
+    text = re.sub(r"\bkonch[au]m\b", "kurachu", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bkonj[au]m\b", "kurachu", text, flags=re.IGNORECASE)
+    # Sanitize unnatural vocatives (mone, mwone, makale, man, dude)
+    text = re.sub(r"(?i)\b(enta\s+)?(mw?one|makale)\b", "eda", text).strip()
+    text = re.sub(r"(?i),\s*(man|dude)\b", "", text).strip()
     # Remove awkward 'bro' references if user did not say bro
     if "bro" not in (user_message or "").lower():
         text = re.sub(r"\b(thanks|sorry|enth|hi|hey)[,\s]+bro\b", r"\1", text, flags=re.IGNORECASE).strip()
@@ -216,6 +227,25 @@ def de_robotify_reply(reply: str, user_message: str) -> str:
     text = re.sub(r"[\u0D00-\u0D7F]+", "", text).strip()
     text = " ".join(line.strip() for line in text.splitlines() if line.strip())
     text = re.sub(r"\s{2,}", " ", text).strip()
+    # Prevent question stacking (max 1 question per casual message)
+    if text.count("?") > 1 and not is_structured_user_request(user_message):
+        parts = [p.strip() for p in re.split(r"(?<=[.!?])\s+", text) if p.strip()]
+        q_parts = [p for p in parts if "?" in p]
+        if len(q_parts) > 1:
+            chosen_q = q_parts[0]
+            if len(chosen_q.strip("?!. ")) <= 6 and len(q_parts) > 1:
+                chosen_q = q_parts[1]
+            kept_parts = []
+            seen_q = False
+            for p in parts:
+                if "?" not in p:
+                    kept_parts.append(p)
+                elif p == chosen_q and not seen_q:
+                    kept_parts.append(p)
+                    seen_q = True
+            if kept_parts:
+                text = " ".join(kept_parts).strip()
+
     text = strip_unsolicited_past_talk(text, user_message)
     if not text.strip():
         text = "Eda... kettilla, onnude para!"
@@ -235,6 +265,10 @@ def character_alignment_issues(reply: str, user_name: str, user_message: str) ->
         issues.append("empty response")
     if any(p in lower for p in BANNED_IDENTITY_PATTERNS):
         issues.append("identity leak (mentions AI/chatbot style identity)")
+    if any(v in lower for v in ("mone", "mwone", "makale")):
+        issues.append("unnatural vocative (mone/makale used)")
+    if any(t in lower for t in ("koncham", "konjam")):
+        issues.append("Tamil word intrusion (use kurachu)")
     words = text.split()
     if len(words) > 120:
         issues.append("too long for chat style")
@@ -326,9 +360,7 @@ async def get_delulu_response(user_id: str, user_message: str) -> str:
     new_name = extract_name(user_message, memory.get("name"))
     if new_name:
         memory["name"] = new_name
-    maybe_fact = maybe_extract_user_fact(user_message)
-    if maybe_fact:
-        add_user_fact(memory, maybe_fact)
+    update_user_topics_and_facts(memory, user_message)
     update_user_vibe(memory, user_message)
     emotion_ctx = build_emotion_context(emotion)
     friendship_ctx = build_friendship_context(level)
@@ -943,17 +975,23 @@ async def about_me(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(user.id)
     memory = get_user_memory(user_id)
     facts = memory.get("user_facts", [])
+    active_topics = memory.get("active_topics", {})
     name = memory.get("name") or "Not set yet"
     level = memory.get("friendship_level", 1)
     total = memory.get("total_messages", 0)
-    if not facts:
+
+    sections = [f"*Things I know about you:*\nName: {name}\nFriendship: Level {level}\nMessages: {total}"]
+    if active_topics:
+        topics_str = "\n".join(f"- {desc}" for desc in active_topics.values())
+        sections.append(f"\n*Active Topics & Projects:*\n{topics_str}")
+    if facts:
+        facts_str = "\n".join(f"- {f}" for f in facts[-10:])
+        sections.append(f"\n*Facts:*\n{facts_str}")
+
+    if not active_topics and not facts:
         await update.message.reply_text(f"I know you as *{name}*. We've exchanged {total} messages. Tell me more about yourself with /remember.", parse_mode="Markdown")
         return
-    facts_text = "\n".join(f"- {f}" for f in facts[-10:])
-    await update.message.reply_text(
-        f"*Things I know about you:*\nName: {name}\nFriendship: Level {level}\nMessages: {total}\n\n{facts_text}",
-        parse_mode="Markdown",
-    )
+    await update.message.reply_text("\n".join(sections), parse_mode="Markdown")
 
 
 async def forget_fact(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -961,6 +999,7 @@ async def forget_fact(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     user_id = str(user.id)
     memory = get_user_memory(user_id)
     memory["user_facts"] = []
+    memory["active_topics"] = {}
     save_memories(user_memories)
     await update.message.reply_text("Forgot everything about you ✅ Fresh start.")
 
