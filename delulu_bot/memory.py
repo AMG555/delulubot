@@ -47,6 +47,7 @@ def get_user_memory(user_id: str) -> dict[str, Any]:
             "friendship_level": 1,
             "mood_history": [],
             "user_facts": [],
+            "active_topics": {},
             "voice_style": "default",
             "voice_enabled": False,
             "tone": "default",
@@ -55,6 +56,8 @@ def get_user_memory(user_id: str) -> dict[str, Any]:
             "emoji_level": "default",
         }
     mem = user_memories[user_id]
+    if "active_topics" not in mem:
+        mem["active_topics"] = {}
     # Normalize legacy "facts" field into "user_facts"
     if "user_facts" not in mem:
         mem["user_facts"] = list(mem.get("facts", []))
@@ -62,6 +65,11 @@ def get_user_memory(user_id: str) -> dict[str, Any]:
         for f in mem.get("facts", []):
             if f not in mem["user_facts"]:
                 mem["user_facts"].append(f)
+    # Strip any legacy junk from facts
+    mem["user_facts"] = [
+        f for f in mem["user_facts"]
+        if not any(j in f.lower() for j in JUNK_FACT_FRAGMENTS)
+    ]
     return mem
 
 
@@ -77,8 +85,19 @@ def update_memory(user_id: str, user_message: str, bot_reply: str) -> None:
     save_memories(user_memories)
 
 
+JUNK_FACT_FRAGMENTS = (
+    "story para", "kadhakal", "coffee", "pinne parayam", "onnum illa",
+    "chumma", "urang", "urakkam", "poya", "ivide thanne", "entha parayunne",
+    "manasilav", "artificial", "talk like human", "talk like a human",
+    "samsarikkan ariyilla", "sheeikkum aara", "ith mathre", "choikkan ollo",
+    "karyam kettal", "karyam paranjathinu", "ennitt", "aysheri", "beshtt",
+)
+
+
 def maybe_extract_user_fact(message: str) -> str | None:
     lower = message.lower().strip()
+    if any(j in lower for j in JUNK_FACT_FRAGMENTS):
+        return None
     patterns = [
         r"(?:i\s+(?:am|'m)\s+|ente\s+peru\s+|enne\s+vilikku\s+|call\s+me\s+)(.{2,30})$",
         r"(?:i\s+(?:like|love|enjoy|hate|dislike)\s+(.{2,50}))",
@@ -95,12 +114,43 @@ def maybe_extract_user_fact(message: str) -> str | None:
         match = re.search(pat, lower)
         if match and match.group(1):
             fact = match.group(1).strip().rstrip(".,!?")
-            if len(fact) > 3:
+            if len(fact) > 3 and not any(j in fact for j in JUNK_FACT_FRAGMENTS):
                 return fact
     return None
 
 
+def update_user_topics_and_facts(memory: dict[str, Any], message: str) -> None:
+    lower = message.lower().strip()
+    if not lower or any(j in lower for j in JUNK_FACT_FRAGMENTS):
+        return
+
+    if "active_topics" not in memory:
+        memory["active_topics"] = {}
+
+    # 1. Hostel app / SaaS
+    if "hostel" in lower and any(w in lower for w in ("saas", "app", "mobile app", "product", "sales", "price", "owners", "digital")):
+        memory["active_topics"]["hostel_app"] = "Building SaaS mobile app for Kerala hostel owners to digitize them; facing sales and pricing objections"
+        add_user_fact(memory, "Building SaaS mobile app for hostel owners in Kerala (struggling with sales/pricing)")
+
+    # 2. General SaaS / Startup
+    elif any(w in lower for w in ("saas", "startup", "product")) and any(w in lower for w in ("ond", "und", "build", "develop", "sales", "marketing")):
+        memory["active_topics"]["project"] = "Developing and marketing a SaaS product/startup"
+        add_user_fact(memory, "Developing and marketing a SaaS product")
+
+    # 3. Trading / Scalping / Chart analysis
+    if any(w in lower for w in ("trading", "scalping", "chart analysis", "stock market", "technical analysis")):
+        memory["active_topics"]["trading"] = "Interested in stock market trading, technical chart analysis, and scalping"
+        add_user_fact(memory, "Interested in stock market trading, chart analysis, and scalping")
+
+    # 4. Standard fact extraction
+    fact = maybe_extract_user_fact(message)
+    if fact:
+        add_user_fact(memory, fact)
+
+
 def add_user_fact(memory: dict[str, Any], fact: str) -> None:
+    if any(j in fact.lower() for j in JUNK_FACT_FRAGMENTS):
+        return
     facts = memory.get("user_facts", [])
     for existing in facts:
         if SequenceMatcher(None, fact.lower(), existing.lower()).ratio() > 0.8:
@@ -184,33 +234,66 @@ TRIVIAL_UTTERANCES = {
 
 def retrieve_substantive_history(memory: dict[str, Any], query: str, max_items: int = 5) -> str:
     """Find substantive past statements from history so the bot can recall what was discussed."""
+    lines: list[str] = []
+    active_topics = memory.get("active_topics", {})
+    for _, desc in active_topics.items():
+        lines.append(f"- [Active ongoing topic]: {desc}")
+
     history = memory.get("conversation_history", [])
-    if not history:
+    if not history and not lines:
         return ""
 
-    # Look through history (excluding the immediate last 2 turns which are already current)
     candidate_turns = history[:-2] if len(history) > 2 else history
-    substantive: list[str] = []
+    scored_turns: list[tuple[float, str]] = []
 
-    for msg in reversed(candidate_turns):
+    substantive_keywords = {
+        "saas", "app", "hostel", "trading", "product", "sales", "project",
+        "startup", "work", "job", "client", "market", "pricing", "scalping",
+        "chart", "college", "exam", "interview", "money"
+    }
+
+    q_lower = (query or "").lower()
+    q_words = set(re.findall(r"\w+", q_lower))
+
+    for idx, msg in enumerate(candidate_turns):
         content = msg.get("content", "").strip()
         role = msg.get("role", "user")
         if len(content) < 18:
             continue
-        if content.lower() in TRIVIAL_UTTERANCES:
+        c_lower = content.lower()
+        if c_lower in TRIVIAL_UTTERANCES:
             continue
-        # Avoid duplicates
+        if any(j in c_lower for j in ("ivide thanne und", "ivide thanne unde", "chumma bore", "kettilla onnude")):
+            continue
+
+        c_words = set(re.findall(r"\w+", c_lower))
+        score = 1.0 + (idx * 0.05)
+
+        # Content significance bonus
+        topic_overlap = c_words & substantive_keywords
+        if topic_overlap:
+            score += 5.0 * len(topic_overlap)
+
+        # Query word overlap
+        q_overlap = c_words & q_words
+        if q_overlap:
+            score += 3.0 * len(q_overlap)
+
         prefix = "User previously said" if role == "user" else "Delulu previously replied"
         entry = f'- {prefix}: "{content}"'
-        if entry not in substantive:
-            substantive.append(entry)
-        if len(substantive) >= max_items:
-            break
+        scored_turns.append((score, entry))
 
-    if not substantive:
+    scored_turns.sort(key=lambda x: x[0], reverse=True)
+    selected_entries: list[str] = []
+    for _, entry in scored_turns[:max_items]:
+        if entry not in selected_entries:
+            selected_entries.append(entry)
+
+    lines.extend(selected_entries)
+    if not lines:
         return ""
 
-    return "\n".join(reversed(substantive))
+    return "\n".join(lines)
 
 
 load_memories()

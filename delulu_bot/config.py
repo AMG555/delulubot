@@ -29,7 +29,7 @@ JINA_MODEL = os.getenv("JINA_MODEL", "jina-embeddings-v3")
 PORT = int(os.getenv("PORT", "10000"))
 TIMEOUT_SECONDS = int(os.getenv("TIMEOUT_SECONDS", "15"))
 MAX_TOKENS = 300
-TEMPERATURE = 0.8
+TEMPERATURE = 0.7
 
 RAG_ENABLED = os.getenv("RAG_ENABLED", "true").lower() == "true"
 RAG_DIR = os.getenv("RAG_DIR", "rag_data")

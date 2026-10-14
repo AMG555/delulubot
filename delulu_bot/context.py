@@ -18,17 +18,17 @@ def detect_emotion(text: str) -> str:
     if any(p in t for p in sad_phrases):
         return "sad"
 
-    joy = {"happy", "glad", "great", "awesome", "wonderful", "amazing", "love", "beautiful", "fantastic",
-           "santhosham", "santhosha", "sukham", "kushi", "valare", "super"}
+    joy = {"happy", "glad", "great", "awesome", "wonderful", "amazing", "beautiful", "fantastic",
+           "santhosham", "santhosha", "sukham", "kushi", "super"}
     sadness = {"sad", "cry", "crying", "depressed", "lonely", "miss", "heartbroken", "hurt", "pain", "alone",
-               "dukham", "vishamam", "vishamikk", "karay", "valiya", "prayasham", "saramilla",
+               "dukham", "vishamam", "vishamikk", "karay", "prayasham", "saramilla",
                "maduthu", "maduth", "maduthitt", "down", "lost", "theernnu", "kopp"}
     anger = {"angry", "furious", "mad", "annoyed", "frustrated", "irritated", "pissed",
-             "deshyam", "deshyama", "krodham", "madakk", "poda", "potte", "venam"}
+             "deshyam", "deshyama", "krodham", "madakk", "poda"}
     fear = {"scared", "afraid", "nervous", "worried", "anxious", "panic", "terrified", "fear",
             "pedi", "pedikk", "bhayam", "pathram"}
     love = {"love", "crush", "romantic", "flirt", "date", "boyfriend", "girlfriend", "propose", "miss you",
-            "pretham", "ishtam", "kamuka", "kadal"}
+            "pranayam", "kamukan", "kamuki"}
     dreaming = {"dream", "goal", "wish", "aspire", "future", "ambition", "hope", "imagine",
                 "swapnam", "lakshyam", "aagraham", "kanaavu"}
     music = {"music", "song", "sing", "melody", "lyrics", "tune", "playlist", "guitar", "piano",
@@ -163,13 +163,24 @@ def build_foundation_rag_context() -> str:
 def build_personal_context(memory: dict[str, Any], message: str) -> str:
     facts = list(memory.get("user_facts", []))
     for f in memory.get("facts", []):
-        if f not in facts:
+        if f not in facts and not f.startswith("Loves: story"):
             facts.append(f)
-    if not facts:
-        return ""
-    from .config import PERSONAL_FACTS_TOP_K
+    active_topics = memory.get("active_topics", {})
 
-    return "\n".join(facts[-PERSONAL_FACTS_TOP_K:])
+    lines: list[str] = []
+    if active_topics:
+        lines.append("ACTIVE USER TOPICS & PROJECTS:")
+        for _, topic_desc in active_topics.items():
+            lines.append(f"- {topic_desc}")
+
+    if facts:
+        from .config import PERSONAL_FACTS_TOP_K
+        if lines:
+            lines.append("KNOWN USER FACTS:")
+        for fact in facts[-PERSONAL_FACTS_TOP_K:]:
+            lines.append(f"- {fact}")
+
+    return "\n".join(lines)
 
 
 def build_vibe_context(memory: dict[str, Any]) -> str:
