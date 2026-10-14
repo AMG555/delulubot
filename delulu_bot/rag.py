@@ -21,7 +21,6 @@ from .config import (
     BASE_DIR,
     logger,
 )
-from .memory import user_memories
 
 rag_chunks: list[dict[str, Any]] = []
 rag_idf: dict[str, float] = {}

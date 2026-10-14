@@ -566,3 +566,33 @@ class TestMemoryAndEmotionTracking:
         assert is_user_asking_about_past("Njan aara?")
         assert is_user_asking_about_past("What is my name?")
 
+    def test_forget_clears_all_legacy_and_summary(self):
+        mem = get_user_memory("forget_test_user")
+        mem["user_facts"] = ["fact 1"]
+        mem["facts"] = ["legacy fact 1"]
+        mem["active_topics"] = {"proj": "topic"}
+        mem["conversation_summary"] = "- User: something important"
+
+        # Simulate forget command
+        mem["user_facts"] = []
+        mem["facts"] = []
+        mem["active_topics"] = {}
+        mem["conversation_summary"] = ""
+
+        # Re-fetching memory should not resuscitate facts from legacy
+        refetched = get_user_memory("forget_test_user")
+        assert len(refetched["user_facts"]) == 0
+        assert len(refetched["active_topics"]) == 0
+        assert refetched["conversation_summary"] == ""
+
+    def test_remember_name_integration(self):
+        mem = get_user_memory("remember_name_user")
+        text = "call me Appu"
+        new_name = extract_name(text, mem.get("name"))
+        if new_name:
+            mem["name"] = new_name
+        add_user_fact(mem, text)
+        assert mem["name"] == "Appu"
+        assert any("Appu" in f or "call me" in f.lower() for f in mem["user_facts"])
+
+

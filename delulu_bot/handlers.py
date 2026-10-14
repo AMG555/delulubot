@@ -984,6 +984,9 @@ async def remember_fact(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if not text:
         await update.message.reply_text("Tell me what to remember: /remember <fact>")
         return
+    new_name = extract_name(text, memory.get("name"))
+    if new_name:
+        memory["name"] = new_name
     add_user_fact(memory, text)
     save_memories(user_memories)
     await update.message.reply_text(f"Sheri! Njan orkunnu ✅")
@@ -995,6 +998,7 @@ async def about_me(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     memory = get_user_memory(user_id)
     facts = memory.get("user_facts", [])
     active_topics = memory.get("active_topics", {})
+    summary = memory.get("conversation_summary", "").strip()
     name = memory.get("name") or "Not set yet"
     level = memory.get("friendship_level", 1)
     total = memory.get("total_messages", 0)
@@ -1006,8 +1010,10 @@ async def about_me(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if facts:
         facts_str = "\n".join(f"- {f}" for f in facts[-10:])
         sections.append(f"\n*Facts:*\n{facts_str}")
+    if summary:
+        sections.append(f"\n*Long-term Memory:*\n{summary}")
 
-    if not active_topics and not facts:
+    if not active_topics and not facts and not summary:
         await update.message.reply_text(f"I know you as *{name}*. We've exchanged {total} messages. Tell me more about yourself with /remember.", parse_mode="Markdown")
         return
     await update.message.reply_text("\n".join(sections), parse_mode="Markdown")
@@ -1018,7 +1024,9 @@ async def forget_fact(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     user_id = str(user.id)
     memory = get_user_memory(user_id)
     memory["user_facts"] = []
+    memory["facts"] = []
     memory["active_topics"] = {}
+    memory["conversation_summary"] = ""
     save_memories(user_memories)
     await update.message.reply_text("Forgot everything about you ✅ Fresh start.")
 
